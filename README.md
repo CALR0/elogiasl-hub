@@ -3,9 +3,6 @@
 **El portal de soporte de Elogia Soluciones Logísticas:** un solo lugar, con un solo inicio de
 sesión, donde el equipo encuentra las herramientas y soluciones para sus procesos de la operación.
 
-> El proyecto (repositorio y dirección web) se llama **soporte-elogiasl**; en la página se muestra
-> como **Portal Elogia**. Ese nombre visible se cambia en un solo lugar: `lib/config.ts`.
-
 ---
 
 ## ¿Para qué sirve?
