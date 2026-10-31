@@ -1,0 +1,3 @@
+docs/openapi.json
+package-lock.json
+lib/supabase/database.types.ts

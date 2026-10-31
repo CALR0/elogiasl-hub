@@ -1,0 +1,180 @@
+# soporte-elogiasl (Portal Elogia) — Contexto y hoja de ruta
+
+> Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Portal Elogia** (`lib/config.ts`).
+> Última actualización: 2026-10-31.
+> Resumen para usuarios: [README.md](../README.md).
+
+## 1. Qué es
+
+Portal de soporte de Elogia Soluciones Logísticas: reúne en un solo login, con roles y auditoría,
+herramientas que vivían como aplicaciones separadas:
+
+| Proyecto actual | Qué hace | Dónde queda en la plataforma |
+|---|---|---|
+| [sma-elogia](https://github.com/CALR0/sma-elogia) | Migración de anticipos a SAP (Silogtran → AWS) | Financiero › Transferencia › **Migración anticipo SAP** ✅ |
+| [fvec-elogia](https://github.com/CALR0/fvec-elogia) | Fichas PDF de vehículo/conductor desde Silogtran | Maestros › Vehículo › **Generar ficha técnica** ✅ |
+| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (fase posterior) |
+
+## 2. Stack (alineado con elogix-app)
+
+- **Next.js 16** (App Router, `proxy.ts`) + React 19 + TypeScript · Tailwind v4 · lucide-react · Zod.
+- **Supabase**: Auth (correo + contraseña), Postgres con RLS, Realtime (visor de logs).
+- **Vercel** para el despliegue. Gestor: npm.
+- Paleta "Salvia Elogia" de elogix (`app/globals.css`), logo en `public/brand/`.
+
+## 3. Mapa de módulos
+
+Definido en **`lib/modulos.ts`** (única fuente para menú, rutas, migas y permisos) y espejado en la
+tabla `public.modulos`. La ruta sale de la clave: `financiero.transferencia.migracion-anticipo-sap`
+→ `/financiero/transferencia/migracion-anticipo-sap`.
+
+```
+Despacho        › Manifiesto · Cumplido manifiesto                         (en construcción)
+Financiero      › Factura                                                 (en construcción)
+                › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
+Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
+Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (en construcción ← elogix)
+Auditoría       › Visor de logs                                           (disponible)
+Configuración   › Roles · Usuarios                                        (disponible)
+```
+
+Estados: `disponible`, `migracion`, `construccion`. Las hojas sin página propia las atiende
+`app/(plataforma)/[...ruta]/page.tsx` (tarjetas para padres, aviso "En construcción / En migración"
+para hojas). Al implementar una funcionalidad se crea su carpeta propia, que tiene prioridad.
+
+Menú lateral: los submódulos con funcionalidades dentro (Transferencia, Vehículo) se despliegan con
+una flecha y se abren solos si estás en una de sus páginas; los que son página directa (Factura,
+Visor de logs, Roles, Usuarios) son enlaces. En celular el usuario (tema y cerrar sesión) está en el
+encabezado y el menú es un cajón.
+
+## 4. Seguridad y permisos
+
+Autorización en tres capas:
+1. `proxy.ts` — sin sesión → `/login?next=…` (optimista).
+2. `lib/auth.ts` — `requireUsuario()` / `requirePermiso(clave)` en cada página y Server
+   Function; las rutas `/api/*` usan `lib/api/guardia.ts` (mismo origen + cabecera `x-portal` +
+   acceso). `puede()` replica `public.tiene_acceso()`. Sin sesión, `/api/*` responde 401 en JSON.
+3. **RLS** en Supabase (`supabase/migrations/20261031000000_init.sql`).
+
+Modelo:
+- `roles` — el rol **Administrador** (`es_superadmin`) tiene todo y no se puede restringir/desactivar.
+- `rol_permisos` — **acceso sí/no** por funcionalidad (hoja del árbol), sin acciones. Tener acceso
+  a una hoja da acceso a su submódulo y su módulo: un rol puede tener Financiero con solo
+  "Migración anticipo SAP" y sin "Factura". Función `tiene_acceso(clave)` (migración `…020000`).
+- `perfiles` — 1:1 con `auth.users`, con `rol_id` y `activo`. Un usuario no puede cambiar su propio
+  rol ni desactivarse (trigger).
+- `audit_logs` — la escribe solo el servidor (`registrarAuditoria()` en `lib/auditoria.ts`) con
+  módulo, acción, resultado (`ok/error/denegado`), detalle, IP y navegador. Nadie la edita ni borra.
+  Códigos actuales y sus textos: `lib/gestion/etiquetas.ts` (agrega ahí cada acción nueva).
+  `requirePermiso()` registra `acceso.denegado` cuando alguien intenta entrar sin permiso.
+- `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
+  existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
+- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 38 pruebas de
+  RLS, funciones y triggers. Córrelo antes de subir cambios de BD.
+
+### Configuración y Auditoría (implementado)
+- **Roles** (`/configuracion/roles`): lista con usuarios y accesos por rol; crear/editar con un
+  árbol de casillas módulo › submódulo › funcionalidad (marcar un módulo marca todo lo de abajo;
+  queda "parcial" si solo tiene una parte); activar/inactivar con confirmación. El rol
+  Administrador es de solo lectura. El log guarda accesos agregados/quitados.
+- **Usuarios** (`/configuracion/usuarios`): búsqueda y filtros por rol/estado, crear (la contraseña
+  que se define es la definitiva del usuario; hay generador opcional), editar
+  nombre/correo/rol/contraseña, activar/inactivar (inactivar también bloquea la cuenta en Supabase
+  Auth). Nadie cambia su propio rol ni se inactiva.
+- **Visor de logs** (`/auditoria/visor-logs`): filtros que se aplican sin recargar (selectores al
+  cambiar, búsqueda tras una pausa; `filtros-visor.tsx`), guardados en la URL y resueltos en el
+  servidor; 10 por página con paginación numerada; detalle desplegable (IP, navegador, detalle y, en
+  anticipos, bloques "Payload enviado a SAP / no se envió" y "Respuesta de SAP"); actualización en
+  vivo (Supabase Realtime) y exportación CSV para Excel (`;`, UTF-8, celdas protegidas contra fórmulas).
+- En **modo demostración** todo funciona contra datos en memoria (`lib/gestion/demo.ts`), que se
+  reinician al reiniciar `npm run dev`.
+
+## 5. Integración con Silogtran (SMA y FVE-C)
+
+**Decidido: cuenta de servicio** (una sola cuenta de Silogtran en el servidor; nadie escribe
+credenciales de Silogtran). En Silogtran todo queda a nombre de esa cuenta; en el portal, Auditoría
+registra qué usuario hizo cada consulta.
+
+- `lib/silogtran/cliente.ts` — cliente PRADO (login + centro de costo, búsqueda, terceros, fotos) y
+  paso del AWS WAF con Chromium sin interfaz (`@sparticuz/chromium` en Vercel, `WAF_CHROME_PATH` en
+  local). Portado de FVE-C.
+- `lib/silogtran/sesion-servicio.ts` — `conSilogtran(actor, fn)`: reutiliza la sesión guardada
+  **cifrada** en `public.silogtran_sesion` (migración `…030000`; solo el servidor la lee) y solo vuelve
+  a iniciar sesión cuando Silogtran la vence. Anti-bloqueo de la cuenta compartida (en la BD, atómico):
+  un login a la vez, pausa de 60 min tras error de cuenta (2 min si es pasajero), topes
+  `SILOG_LOGIN_MAX_HORA`/`SILOG_LOGIN_MAX_DIA`.
+- `lib/silogtran/sello.ts` — AES-256-GCM con `SESSION_SECRET` (sesión de Silogtran y fichas).
+- **Una sola sesión compartida** por fichas y anticipos: consultas seguidas (de cualquier usuario y
+  módulo) reutilizan la misma cookie; solo se inicia sesión cuando Silogtran la vence, y si coinciden
+  dos peticiones, el candado de la BD hace que solo una inicie sesión y la otra espere y la reutilice.
+- `npm run probar:waf` — diagnóstico del firewall sin credenciales (verificado: token en ~3 s).
+
+### Maestros › Vehículo › Generar ficha técnica (FVE-C) — migrado
+- Pantalla: `app/(plataforma)/maestros/vehiculo/ficha-tecnica/` (placas tipo chips, consulta en serie,
+  visor Vehículo/Conductor, ZIP de PDF armado en el navegador, Excel).
+- API (`app/api/fichas/{consultar,ver,pdf,exportar}`): mismo origen + cabecera `x-portal`, sesión y
+  acceso a la funcionalidad (`lib/fichas/guardia.ts`). Cada ficha viaja **sellada** al navegador
+  (4 h, atada al usuario); no se guarda nada.
+- Núcleo en `lib/fichas/` (parser, PDF, Excel) igual a FVE-C; `npm run test:fichas` lo prueba con las
+  fichas de muestra de `tests/fixtures`.
+- Auditoría: `ficha.consultar` (por placa, ok/error), `ficha.exportar`, `silogtran.sesion`.
+- Placa inexistente: la fila muestra el mensaje real de Silogtran ("No existe un vehículo con la
+  placa … en Silogtran."). No hay modo de prueba: siempre consulta Silogtran.
+- Vercel: Node **24.x**; `next.config.ts` incluye en la función las fuentes de PDFKit y el Chromium.
+
+### Financiero › Transferencia › Migración anticipo SAP (SMA) — migrado
+- Pantalla: `app/(plataforma)/financiero/transferencia/migracion-anticipo-sap/` (por planilla o
+  consolidado, en serie, progreso, resumen, tabla de 10 por página con estado/HTTP/mensaje, Excel con
+  xlsx-js-style en el navegador). El payload y la respuesta NO se muestran en la tabla: van al log.
+- API `app/api/anticipos/procesar`: guardia común (`lib/api/guardia.ts`), una entrada de Auditoría
+  `anticipo.migrar` por anticipo con estado, mensaje, consolidado, `enviado_a_sap` (true solo si se
+  hizo el `POST /events`), `payload` y `respuesta` de SAP.
+- "Duplicado" = ya migrado en SAP (se verifica con `GET /logs/{id}`, que solo lee) o repetido en el
+  lote: **no se envía**. El HTTP 200 de esas filas es el de la consulta, no de un envío.
+- `cli.buscarLogInterfaz()` (Log de la Interfaz, IDHidden 139) con la **misma sesión de servicio**
+  que fichas; `lib/anticipos/parser.ts` extrae los payloads create/update; `lib/anticipos/aws.ts`
+  envía a AWS (`X_API_KEY`, solo servidor) y confirma en `/logs` (idempotente: no reenvía lo ya
+  migrado ni repetidos del lote). Sin `X_API_KEY` (o `SIMULATE_CREATE=true`) queda en **modo
+  simulado**, como en SMA. `npm run test:anticipos` prueba el parser.
+
+## 6. Estudios (propuesta de organización, no se implementa aún)
+
+- **Solicitar estudios** — formularios de documento y vehículo de elogix (rol que solicita).
+- **Mis solicitudes** — estado y decisión de lo que envié.
+- **Verificar estudios** — bandeja del verificador (hallazgos, reporte, aprobar/rechazar).
+- **Historial** — lo ya revisado: quién, cuándo, decisión y comentario, con filtros y exportación.
+
+Los roles de elogix (`usuario` / `admin`) se reemplazan por permisos sobre estas hojas. La regla de
+elogix "quien solicita nunca ve hallazgos" se mantiene con RLS: los resultados solo se leen con
+permiso sobre `estudios.verificar` / `estudios.historial`.
+
+## 7. Puesta en marcha
+
+1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
+2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
+   (`…000000_init`, `…010000_gestion_roles_usuarios`, `…020000_permisos_por_acceso` y
+   `…030000_silogtran_sesion`).
+3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
+   Confirm) y correr `supabase/seed.sql` con su correo.
+4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
+   de Silogtran (`SILOG_USUARIO`/`SILOG_CLAVE`), `WAF_CHROME_PATH` (solo local) y `X_API_KEY` de AWS.
+5. Vercel (pendiente): importar el repo, **Node.js 24.x**, las mismas variables salvo
+   `WAF_CHROME_PATH`, y `NEXT_PUBLIC_APP_URL` con la URL de Vercel.
+
+## 8. Estado actual (2026-10-31) y siguientes pasos
+
+**Funcionando en local contra el Supabase real** (migraciones aplicadas, primer administrador creado):
+
+- ✅ Login, menú de módulos según accesos del rol, inicio, avisos "En construcción", modo
+  claro/oscuro, diseño adaptado a celular, pantallas de carga.
+- ✅ Configuración › Roles (accesos por módulo/submódulo/funcionalidad) y Usuarios.
+- ✅ Auditoría › Visor de logs (filtros sin recarga, paginación, detalle, CSV, en vivo).
+- ✅ Maestros › Vehículo › **Generar ficha técnica** (ex FVE-C), probado con placas reales usando la
+  cuenta de servicio de Silogtran.
+- ✅ Financiero › Transferencia › **Migración anticipo SAP** (ex SMA), probado con planillas reales y
+  `X_API_KEY` configurada (detecta lo ya migrado y no lo reenvía).
+- ✅ Pruebas: `db:test` (38), `test:fichas`, `test:anticipos`, `probar:waf`; lint, tipos y build limpios.
+
+**Pendiente:**
+- ⏭️ Desplegar en **Vercel** (Node 24.x + variables; ver §7).
+- ⏭️ Módulos en construcción: Despacho, Factura, Estudios (propuesta en §6).

@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens "Salvia Elogia" (los mismos de ELOGIX, derivados del logo
+ * #95A495). Modo claro por defecto; modo oscuro con la clase .dark en <html>
+ * (components/plataforma/tema.tsx). Nombres compatibles con shadcn/ui más los
+ * tokens de marca, del estado de los módulos y del semáforo de hallazgos.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f4f6f4; /* salvia-50 */
+  --foreground: #1e2620; /* salvia-900 */
+  --card: #ffffff;
+  --card-foreground: #1e2620;
+  --popover: #ffffff;
+  --popover-foreground: #1e2620;
+  --muted: #e2e9e2; /* salvia-100 */
+  --muted-foreground: #5b675c;
+  --border: #dce3dc;
+  --input: #c7d1c7; /* salvia-200 */
+  --ring: #517051;
+
+  --brand: #95a495; /* salvia-400: logo y acentos decorativos, no para texto sobre blanco */
+  --brand-deep: #364e36; /* salvia-800: paneles de marca con texto blanco (9:1) */
+  --primary: #517051; /* salvia-600: 5,6:1 con blanco */
+  --primary-hover: #436043; /* salvia-700 */
+  --primary-foreground: #ffffff;
+  --secondary: #e2e9e2; /* salvia-100 */
+  --secondary-foreground: #1e2620;
+  --accent: #e2e9e2;
+  --accent-foreground: #364e36; /* salvia-800 */
+  --destructive: #c8372d;
+  --destructive-foreground: #ffffff;
+
+  /* Semáforo de hallazgos: siempre con icono + texto, nunca solo color */
+  --hallazgo-alto: #c8372d;
+  --hallazgo-medio: #d9822b;
+  --hallazgo-bajo: #b8962a;
+  --hallazgo-info: #2f6fa3;
+  --hallazgo-sin: #2e8b57;
+
+  /* Estado de los módulos: siempre con texto, nunca solo color */
+  --construccion: #9a6a12;
+  --construccion-bg: #fbf3e2;
+  --migracion: #2f6fa3;
+  --migracion-bg: #e8f1f8;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: #121712;
+  --foreground: #e2e9e2;
+  --card: #1a231a;
+  --card-foreground: #e2e9e2;
+  --popover: #1a231a;
+  --popover-foreground: #e2e9e2;
+  --muted: #222d22;
+  --muted-foreground: #a3b0a4;
+  --border: #2a362a;
+  --input: #364e36;
+  --ring: #95a495;
+
+  --brand: #95a495;
+  --brand-deep: #1a231a;
+  --primary: #95a495; /* 8:1 con texto oscuro */
+  --primary-hover: #a8b5a8;
+  --primary-foreground: #121712;
+  --secondary: #222d22;
+  --secondary-foreground: #e2e9e2;
+  --accent: #222d22;
+  --accent-foreground: #c7d1c7;
+
+  --construccion: #e3b660;
+  --construccion-bg: #2e2716;
+  --migracion: #8bbbe0;
+  --migracion-bg: #172531;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-hallazgo-alto: var(--hallazgo-alto);
+  --color-hallazgo-medio: var(--hallazgo-medio);
+  --color-hallazgo-bajo: var(--hallazgo-bajo);
+  --color-hallazgo-info: var(--hallazgo-info);
+  --color-hallazgo-sin: var(--hallazgo-sin);
+
+  --color-construccion: var(--construccion);
+  --color-construccion-bg: var(--construccion-bg);
+  --color-migracion: var(--migracion);
+  --color-migracion-bg: var(--migracion-bg);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-inter);
+
+  /*
+   * Animaciones de carga: lentas y suaves, solo opacidad y transform (las
+   * hace la tarjeta gráfica, no recalculan el layout).
+   */
+  --animate-aparecer: aparecer 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-entrar: entrar 600ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+  /* El esqueleto espera 250 ms: si la página llega antes, no aparece (sin destellos) */
+  --animate-esqueleto: aparecer 400ms ease-out 250ms both;
+  --animate-respirar: respirar 2.6s ease-in-out infinite;
+  --animate-progreso: progreso 2.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+
+  @keyframes aparecer {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes entrar {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes respirar {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  @keyframes progreso {
+    from {
+      transform: translateX(-110%);
+    }
+    to {
+      transform: translateX(310%);
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * "Reducir movimiento" (Windows con efectos de animación apagados): sin
+ * desplazamientos ni transiciones, pero las pantallas de carga siguen con
+ * fundidos suaves de opacidad, que no marean y se ven fluidos.
+ * Va fuera de @layer a propósito: el CSS sin capa siempre gana a las utilidades.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+  .animate-entrar {
+    animation-name: aparecer;
+  }
+  .animate-progreso {
+    width: 100%;
+    animation-name: respirar;
+  }
+}
