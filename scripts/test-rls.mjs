@@ -38,6 +38,7 @@ const ADMIN = "11111111-1111-4111-8111-111111111111";
 const GESTOR = "22222222-2222-4222-8222-222222222222"; // gestiona usuarios y ve logs (no roles)
 const OPERADOR = "33333333-3333-4333-8333-333333333333"; // solo financiero
 const SIN_ROL = "44444444-4444-4444-8444-444444444444";
+const ENCARGADO = "55555555-5555-4555-8555-555555555555"; // gestiona roles (no es superadmin)
 
 const {
   rows: [{ id: ROL_ADMIN }],
@@ -52,11 +53,17 @@ const {
 } = await db.query(
   "insert into public.roles (nombre) values ('Operador') returning id",
 );
+const {
+  rows: [{ id: ROL_ROLES }],
+} = await db.query(
+  "insert into public.roles (nombre) values ('Encargado de roles') returning id",
+);
 await db.exec(`
   insert into public.rol_permisos (rol_id, modulo_clave) values
     ('${ROL_GESTOR}', 'configuracion.usuarios'),
     ('${ROL_GESTOR}', 'auditoria.visor-logs'),
-    ('${ROL_OPERADOR}', 'financiero.transferencia.migracion-anticipo-sap');
+    ('${ROL_OPERADOR}', 'financiero.transferencia.migracion-anticipo-sap'),
+    ('${ROL_ROLES}', 'configuracion.roles');
 `);
 
 for (const [id, email, rol] of [
@@ -64,6 +71,7 @@ for (const [id, email, rol] of [
   [GESTOR, "gestor@elogia.test", ROL_GESTOR],
   [OPERADOR, "operador@elogia.test", ROL_OPERADOR],
   [SIN_ROL, "sinrol@elogia.test", null],
+  [ENCARGADO, "encargado@elogia.test", ROL_ROLES],
 ]) {
   // El trigger on_auth_user_created crea el perfil con nombre y rol
   await db.exec(`insert into auth.users (id, email, raw_app_meta_data, raw_user_meta_data)
@@ -104,13 +112,13 @@ const guardar = (id, nombre, accesos) =>
 let r = await db.query(
   "select count(*)::int as n from public.perfiles where rol_id is not null",
 );
-check("trigger crea perfiles con su rol", r.rows[0].n === 3, r.rows);
+check("trigger crea perfiles con su rol", r.rows[0].n === 4, r.rows);
 
 // Lectura de perfiles
 r = await as(OPERADOR, "select id from public.perfiles");
 check("operador solo ve su propio perfil", ok(r, 1), r);
 r = await as(GESTOR, "select id from public.perfiles");
-check("gestor de usuarios ve todos los perfiles", ok(r, 4), r);
+check("gestor de usuarios ve todos los perfiles", ok(r, 5), r);
 r = await as(null, "select id from public.perfiles");
 check("anónimo no ve perfiles", err(r) || ok(r, 0), r);
 
@@ -142,7 +150,7 @@ check("usuario sin rol no está activo", r.rows?.[0].a === false, r);
 r = await as(OPERADOR, "select * from public.rol_permisos");
 check("operador solo lee los permisos de su rol", ok(r, 1), r);
 r = await as(ADMIN, "select * from public.rol_permisos");
-check("quien gestiona roles lee todos los accesos", ok(r, 3), r);
+check("quien gestiona roles lee todos los accesos", ok(r, 4), r);
 
 // guardar_rol
 r = await as(OPERADOR, guardar(null, "Intruso", []));
@@ -160,7 +168,7 @@ r = await as(
   ADMIN,
   guardar(ROL_NUEVO, "Facturación", [
     "financiero.factura",
-    "despacho.manifiesto",
+    "despacho.manifiesto.expedir-sicetac",
   ]),
 );
 r = await db.query(
@@ -222,6 +230,55 @@ r = await as(
   `update public.perfiles set activo=false where id='${ADMIN}'`,
 );
 check("no se inactiva al último administrador", err(r), r);
+
+// Superadministradores: solo otro superadmin los modifica o asigna ese rol
+r = await as(
+  GESTOR,
+  `update public.perfiles set rol_id='${ROL_ADMIN}' where id='${OPERADOR}'`,
+);
+check("gestor de usuarios no asigna el rol superadmin", err(r), r);
+r = await as(
+  GESTOR,
+  `update public.perfiles set nombre_completo='x' where id='${ADMIN}'`,
+);
+check("gestor de usuarios no modifica a un superadmin", err(r), r);
+r = await as(
+  ADMIN,
+  `update public.perfiles set rol_id='${ROL_ADMIN}' where id='${OPERADOR}' returning id`,
+);
+check("un superadmin sí asigna el rol superadmin", ok(r, 1), r);
+r = await as(
+  ADMIN,
+  `update public.perfiles set rol_id='${ROL_NUEVO}' where id='${OPERADOR}' returning id`,
+);
+check("un superadmin sí modifica a otro superadmin", ok(r, 1), r);
+
+// El rol propio: quien gestiona roles no se da accesos a sí mismo
+r = await as(
+  ENCARGADO,
+  guardar(ROL_ROLES, "Encargado de roles", [
+    "configuracion.roles",
+    "configuracion.usuarios",
+  ]),
+);
+check("nadie edita los accesos de su propio rol", err(r), r);
+r = await as(
+  ENCARGADO,
+  `insert into public.rol_permisos (rol_id, modulo_clave) values ('${ROL_ROLES}', 'configuracion.usuarios')`,
+);
+check("ni insertando directo en rol_permisos", err(r), r);
+r = await as(
+  ENCARGADO,
+  `update public.roles set activo=false where id='${ROL_ROLES}'`,
+);
+check("nadie desactiva su propio rol", err(r), r);
+r = await as(ENCARGADO, guardar(ROL_GESTOR, "Gestor", ["auditoria.visor-logs"]));
+check("quien gestiona roles edita los demás roles", ok(r, 1), r);
+r = await as(
+  ADMIN,
+  guardar(ROL_ROLES, "Encargado de roles", ["configuracion.roles"]),
+);
+check("un superadmin edita cualquier rol", ok(r, 1), r);
 
 // Auditoría
 r = await as(OPERADOR, "select * from public.audit_logs");

@@ -44,14 +44,32 @@ export async function autorizar(
   return usuario;
 }
 
-/** Lee el cuerpo JSON (máx. ~4 MB); null si no es válido. */
+const MAX_CUERPO = 4 * 1024 * 1024;
+
+/**
+ * Lee el cuerpo JSON (máx. 4 MB); null si no es válido. Cuenta los bytes que
+ * llegan: un cuerpo por partes (sin content-length) no se salta el límite.
+ */
 export async function cuerpoJson(
   req: Request,
 ): Promise<Record<string, unknown> | null> {
   const largo = Number(req.headers.get("content-length") || 0);
-  if (largo > 4 * 1024 * 1024) return null;
+  if (largo > MAX_CUERPO || !req.body) return null;
   try {
-    const d = await req.json();
+    const lector = req.body.getReader();
+    const partes: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_CUERPO) {
+        await lector.cancel();
+        return null;
+      }
+      partes.push(value);
+    }
+    const d = JSON.parse(Buffer.concat(partes).toString("utf8"));
     return d && typeof d === "object" ? d : null;
   } catch {
     return null;

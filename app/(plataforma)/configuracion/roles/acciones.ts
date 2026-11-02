@@ -37,6 +37,8 @@ const esquemaRol = z.object({
 function mensajeError(codigo: string | undefined, mensaje: string) {
   if (codigo === "23505") return "Ya existe un rol con ese nombre.";
   if (codigo === "42501") return "No tienes acceso a la gestión de roles.";
+  if (/rol al que perteneces/i.test(mensaje))
+    return "No puedes modificar el rol al que perteneces.";
   if (/superadministrador/i.test(mensaje))
     return "El rol de administrador no se puede modificar.";
   return "No se pudo guardar el rol. Intenta de nuevo.";
@@ -56,6 +58,12 @@ export async function guardarRol(
     return {
       ok: false,
       error: "El rol de administrador no se puede modificar.",
+    };
+  // Nadie (salvo el superadmin) se da accesos editando su propio rol
+  if (anterior && anterior.id === yo.rol.id && !yo.rol.esSuperadmin)
+    return {
+      ok: false,
+      error: "No puedes modificar el rol al que perteneces.",
     };
 
   let id = p.data.id;
@@ -148,8 +156,11 @@ export async function cambiarEstadoRol(
       ok: false,
       error: "El rol de administrador no se puede inactivar.",
     };
-  if (!activo && rol.id === yo.rol.id)
-    return { ok: false, error: "No puedes inactivar tu propio rol." };
+  if (rol.id === yo.rol.id)
+    return {
+      ok: false,
+      error: "No puedes cambiar el estado del rol al que perteneces.",
+    };
 
   if (MODO_DEMO) {
     almacenDemo().roles.find((r) => r.id === rolId)!.activo = activo;

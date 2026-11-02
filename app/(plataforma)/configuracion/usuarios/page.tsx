@@ -22,11 +22,14 @@ export default async function UsuariosPage() {
       />
       <GestionUsuarios
         usuarios={usuarios}
-        roles={roles.map((r) => ({
-          id: r.id,
-          nombre: r.nombre,
-          activo: r.activo,
-        }))}
+        // El rol de superadministrador solo lo asigna otro superadministrador
+        roles={roles
+          .filter((r) => yo.rol.esSuperadmin || !r.esSuperadmin)
+          .map((r) => ({
+            id: r.id,
+            nombre: r.nombre,
+            activo: r.activo,
+          }))}
         miId={yo.id}
       />
     </div>

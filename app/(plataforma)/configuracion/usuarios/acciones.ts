@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requirePermiso } from "@/lib/auth";
+import { requirePermiso, type UsuarioActual } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { MODO_DEMO } from "@/lib/demo";
 import { almacenDemo } from "@/lib/gestion/demo";
@@ -40,13 +40,36 @@ function mensajeError(codigo: string | undefined, mensaje: string) {
     return "Debe quedar al menos un administrador activo.";
   if (/propio rol/i.test(mensaje))
     return "No puedes cambiar tu propio rol ni desactivarte.";
+  if (/superadministrador/i.test(mensaje)) return SOLO_SUPERADMIN;
   return "No se pudo completar la operación. Intenta de nuevo.";
 }
 
-/** El rol debe existir y estar activo para poder asignarse. */
-async function rolAsignable(rolId: string) {
+const SOLO_SUPERADMIN =
+  "Solo un superadministrador puede gestionar cuentas de superadministrador.";
+
+/**
+ * El rol debe existir y estar activo para poder asignarse; el de
+ * superadministrador solo lo asigna otro superadministrador.
+ */
+async function rolAsignable(rolId: string, yo: UsuarioActual) {
   const rol = (await listarRoles()).find((r) => r.id === rolId);
-  return rol?.activo ? rol : null;
+  if (!rol?.activo)
+    return { rol: null, error: "El rol elegido no está activo." };
+  if (rol.esSuperadmin && !yo.rol.esSuperadmin)
+    return { rol: null, error: SOLO_SUPERADMIN };
+  return { rol, error: "" };
+}
+
+/**
+ * ¿La cuenta es de un superadministrador? Entonces solo otro superadmin la
+ * toca: correo y contraseña van por la API de administración (sin RLS), y
+ * cambiarlos sería tomar control de la cuenta.
+ */
+async function esCuentaSuperadmin(rolId: string | null) {
+  if (!rolId) return false;
+  return Boolean(
+    (await listarRoles()).find((r) => r.id === rolId)?.esSuperadmin,
+  );
 }
 
 /** En demo: ¿quedaría sin administradores activos? */
@@ -75,8 +98,9 @@ export async function crearUsuario(entrada: {
     .object({ nombre, email, rolId: z.uuid("Elige un rol."), clave })
     .safeParse(entrada);
   if (!p.success) return { ok: false, error: p.error.issues[0].message };
-  const rol = await rolAsignable(p.data.rolId);
-  if (!rol) return { ok: false, error: "El rol elegido no está activo." };
+  const asignable = await rolAsignable(p.data.rolId, yo);
+  if (!asignable.rol) return { ok: false, error: asignable.error };
+  const { rol } = asignable;
 
   let id: string;
   if (MODO_DEMO) {
@@ -145,6 +169,8 @@ export async function editarUsuario(entrada: {
 
   const actual = (await listarUsuarios()).find((u) => u.id === p.data.id);
   if (!actual) return { ok: false, error: "El usuario no existe." };
+  if (!yo.rol.esSuperadmin && (await esCuentaSuperadmin(actual.rolId)))
+    return { ok: false, error: SOLO_SUPERADMIN };
 
   const cambiaNombre = actual.nombre !== p.data.nombre;
   const cambiaRol = actual.rolId !== p.data.rolId;
@@ -155,9 +181,9 @@ export async function editarUsuario(entrada: {
 
   if (cambiaRol && p.data.id === yo.id)
     return { ok: false, error: "No puedes cambiar tu propio rol." };
-  const rol = cambiaRol ? await rolAsignable(p.data.rolId) : null;
-  if (cambiaRol && !rol)
-    return { ok: false, error: "El rol elegido no está activo." };
+  const asignable = cambiaRol ? await rolAsignable(p.data.rolId, yo) : null;
+  if (asignable && !asignable.rol) return { ok: false, error: asignable.error };
+  const rol = asignable?.rol ?? null;
 
   if (MODO_DEMO) {
     const a = almacenDemo();
@@ -246,6 +272,8 @@ export async function cambiarEstadoUsuario(
     };
   const actual = (await listarUsuarios()).find((u) => u.id === usuarioId);
   if (!actual) return { ok: false, error: "El usuario no existe." };
+  if (!yo.rol.esSuperadmin && (await esCuentaSuperadmin(actual.rolId)))
+    return { ok: false, error: SOLO_SUPERADMIN };
 
   if (MODO_DEMO) {
     if (!activo && dejariaSinAdmin(actual.id, actual.rolId ?? "", false))
