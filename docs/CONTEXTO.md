@@ -29,7 +29,8 @@ tabla `public.modulos`. La ruta sale de la clave: `financiero.transferencia.migr
 → `/financiero/transferencia/migracion-anticipo-sap`.
 
 ```
-Despacho        › Manifiesto · Cumplido manifiesto                         (en construcción)
+Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (disponible)
+                › Cumplido manifiesto › Migración cumplido RNDC           (disponible)
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
@@ -62,14 +63,19 @@ Modelo:
   a una hoja da acceso a su submódulo y su módulo: un rol puede tener Financiero con solo
   "Migración anticipo SAP" y sin "Factura". Función `tiene_acceso(clave)` (migración `…020000`).
 - `perfiles` — 1:1 con `auth.users`, con `rol_id` y `activo`. Un usuario no puede cambiar su propio
-  rol ni desactivarse (trigger).
+  rol ni desactivarse (trigger). Solo un superadministrador modifica a otro superadministrador o
+  asigna ese rol (trigger `perfiles_proteger_superadmin`, migración `…20261102020000`; en la app,
+  `configuracion/usuarios/acciones.ts` lo exige también para correo y contraseña, que van por la API
+  de administración sin RLS).
+- Nadie (salvo el superadministrador) edita, desactiva ni cambia los accesos del rol al que
+  pertenece (triggers `roles_proteger_propio` y `rol_permisos_proteger_propio`).
 - `audit_logs` — la escribe solo el servidor (`registrarAuditoria()` en `lib/auditoria.ts`) con
   módulo, acción, resultado (`ok/error/denegado`), detalle, IP y navegador. Nadie la edita ni borra.
   Códigos actuales y sus textos: `lib/gestion/etiquetas.ts` (agrega ahí cada acción nueva).
   `requirePermiso()` registra `acceso.denegado` cuando alguien intenta entrar sin permiso.
 - `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
   existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
-- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 38 pruebas de
+- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 47 pruebas de
   RLS, funciones y triggers. Córrelo antes de subir cambios de BD.
 
 ### Configuración y Auditoría (implementado)
@@ -137,6 +143,73 @@ registra qué usuario hizo cada consulta.
   migrado ni repetidos del lote). Sin `X_API_KEY` (o `SIMULATE_CREATE=true`) queda en **modo
   simulado**, como en SMA. `npm run test:anticipos` prueba el parser.
 
+### Despacho › Manifiesto › Expedir manifiesto SICETAC — nuevo (2026-11-02)
+Para manifiestos que el Ministerio rechazó con **MAN045** (flete por debajo del SICETAC). Basado en
+la extensión `autosice-extension`, pero todo por HTTP desde el servidor (sin Chrome).
+- **Procesar** (`/api/sicetac/procesar`, una sola acción con confirmación en pantalla) por cada
+  manifiesto: primero consulta en el RNDC si ya tiene radicado (proceso 4, tipo 3 → `INGRESOID`;
+  "RNDC11 Documento no encontrado" = no radicado). Si lo tiene, muestra "ya está expedido bajo el
+  número de radicado N" y no envía nada (cubre los radicados de antes y evita radicar dos veces).
+  Credenciales: `RNDC_USUARIO`/`RNDC_CLAVE`/`RNDC_NIT` del `.env`, o las del XML si no están.
+  Luego `lib/sicetac/ministerio.ts` lee la página de Colombia Software
+  (`consumoministerio.php?base=bd_construproyec&documento=…`) → mensaje del último intento + XML del
+  proceso 4; si no es MAN045 no se ajusta ni se envía. Remesa en Silogtran (horas pactadas y tipo de
+  carga, cuenta de servicio) → configuración del vehículo por RNDC proceso 12 (`lib/sicetac/rndc.ts`,
+  con el acceso del propio XML) → **portal SICETAC** por postbacks ASP.NET (`lib/sicetac/portal.ts`,
+  ~4 s, suma de validación automática como la extensión; caché por mes y ruta en memoria) → flete =
+  `ceil(COSTOTOTALVIAJE)`; `retencionFuenteManifiesto` y `RETENCIONFOPAT` conservan su proporción
+  (1 % y 0,1 %). Solo cambian esas 3 etiquetas (`lib/sicetac/xml.ts`). Si está por debajo, se
+  **expide de inmediato** al RNDC (`rndcws2…/svr008w.dll/soap/IBPMServices`, proceso 4) → "Manifiesto
+  X expedido con éxito bajo el número de radicado N" (`ingresoid`) o el error del Ministerio; con
+  éxito se vuelve a consultar `consumoministerio.php` (como se hace a mano).
+- Auditoría: **un solo evento** `manifiesto.expedir` por manifiesto con estado, mensaje, radicado,
+  flete original, flete SICETAC, flete y retenciones enviados, ruta/vehículo/carga/horas, consulta
+  posterior, **XML original**, **XML enviado** (ambos sin usuario ni clave) y respuesta del RNDC.
+- Pruebas: `npm run test:sicetac` (página real de 0101223914 sin credenciales + ajuste del XML),
+  `npm run probar:sicetac -- 2S3 17001000 76109000 2 2` (portal en vivo, solo consulta).
+- Migración `…20261102000000_expedir_manifiesto_sicetac.sql`: Manifiesto pasa a submódulo y los
+  accesos que existían sobre él pasan a la funcionalidad nueva.
+- ⚠️ La página de Colombia Software es pública y muestra el usuario/clave del RNDC en los enlaces
+  "Xml": reportarlo a Colombia Software.
+
+### Despacho › Cumplido manifiesto › Migración cumplido RNDC — nuevo (2026-11-02)
+Para cumplidos que el Ministerio rechazó por retenciones. `Procesar` (`/api/cumplidos/procesar`,
+confirmación en pantalla) por cada manifiesto, en un paso:
+- Primero consulta en el RNDC si el cumplido ya tiene radicado (proceso 6, tipo 3); si lo tiene, no
+  envía nada: muestra el radicado y vuelve a consultar la página para que quede marcado.
+- `lib/cumplidos/pagina.ts` lee `consumoministeriocumplido.php?base=bd_construproyec&manifiesto=…`
+  → mensaje del último intento, códigos de error y XML del proceso 6 (el enlace "Xml" puede venir
+  URL-codificado o con entidades HTML). Si ya dice "REGISTRO INGRESADO" no se toca; si el error no es
+  de retenciones tampoco.
+- **Remesas primero** (sin su cumplido en el RNDC el del manifiesto da **CMA110**): de la sección
+  "Envio Cumplido de Remesa" de la misma página salen las remesas; por cada una se consulta el
+  proceso 5 (tipo 3, valores entre comillas sencillas o da RNDC027). Si no tiene cumplido (p. ej.
+  lo anularon en el RNDC y Silogtran quedó con el radicado viejo, así que ya no lo reenvía), el XML
+  se toma del último intento del **Visor Log Interfaz RNDC** de Silogtran
+  (`Maestros.InterfazlogRndc.VisorLogInterfazRndcV2`): esa pantalla consulta la API GraphQL
+  `getLogRndc` de Colombia Software (`serviciosfx…:8000/graphql_servicios/`) con el JWT
+  `token_fenix` que trae su HTML (`Silogtran.tokenVisorRndc()` + `lib/cumplidos/log-rndc.ts`).
+  Se radica con `registrarRndc`; si una remesa falla, no se envía el manifiesto. CMA110 cuenta como
+  error procesable (sin error de retenciones el XML del manifiesto va igual).
+- Flete pactado del manifiesto según el RNDC (proceso 4, tipo 3 → `VALORFLETEPACTADOVIAJE`, en
+  `lib/sicetac/rndc.ts › consultarFletePactado`). Puede diferir del de Silogtran (p. ej. tras un
+  ajuste SICETAC), y por eso fallan las retenciones del cumplido.
+- `lib/cumplidos/xml.ts`: **CMA273** → `RETENCIONFOPAT` (0,1 %) y `RETENCIONFUENTEMANIFIESTO` (1 %);
+  **CMA262** → solo `RETENCIONFUENTEMANIFIESTO` (se agrega si no viene). Redondeo al peso.
+- Envío al RNDC con `registrarRndc` (también lo usa el manifiesto): si un servidor no atiende
+  (RNDC12, respuesta ilegible o más de 25 s) verifica que no haya quedado radicado y reintenta en
+  el otro. Cumplido y manifiesto van primero a `rndcws` (el de las consultas, más rápido) y usan
+  `rndcws2` de respaldo. Auditoría guarda `tiempos_ms` por paso e `intentos_envio`.
+- Envío al RNDC (mismo endpoint/mecanismo que el manifiesto) → "Cumplido del manifiesto X radicado
+  con éxito bajo el número de radicado N"; con éxito se vuelve a consultar la página para que quede
+  marcado en Silogtran.
+- Auditoría: un solo evento `cumplido.migrar` (remesas con su XML/respuesta, estado, mensaje, radicado, errores, flete RNDC,
+  retenciones originales y enviadas, consulta posterior, XML original/enviado sin credenciales,
+  respuesta del RNDC). Prueba: `npm run test:cumplidos` (página real de 0101224880 sin credenciales).
+- Migración `20261102010000_migracion_cumplido_rndc.sql`: Cumplido manifiesto pasa a submódulo y sus
+  accesos pasan a la funcionalidad nueva.
+- Acceso al RNDC común a los dos módulos: `accesoRndc()` en `lib/sicetac/rndc.ts`.
+
 ## 6. Estudios (propuesta de organización, no se implementa aún)
 
 - **Solicitar estudios** — formularios de documento y vehículo de elogix (rol que solicita).
@@ -152,8 +225,9 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
 
 1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
 2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
-   (`…000000_init`, `…010000_gestion_roles_usuarios`, `…020000_permisos_por_acceso` y
-   `…030000_silogtran_sesion`).
+   (`…000000_init`, `…010000_gestion_roles_usuarios`, `…020000_permisos_por_acceso`,
+   `…030000_silogtran_sesion`, `20261102000000_expedir_manifiesto_sicetac` y
+   `20261102010000_migracion_cumplido_rndc`).
 3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
@@ -161,7 +235,17 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
 5. Vercel (pendiente): importar el repo, **Node.js 24.x**, las mismas variables salvo
    `WAF_CHROME_PATH`, y `NEXT_PUBLIC_APP_URL` con la URL de Vercel.
 
-## 8. Estado actual (2026-10-31) y siguientes pasos
+### Memoria de los módulos y caché (2026-11-02)
+- `components/sesion/memoria-sesion.tsx` — `useEstadoSesion(clave, inicial)`: como `useState`, pero
+  lo escrito y los resultados de cada módulo (SICETAC, cumplidos, anticipos, fichas, y la página de
+  la tabla) siguen ahí al cambiar de módulo y volver; se pierden al recargar (solo memoria de
+  JavaScript). Va atada al usuario (`<MemoriaSesion>` en el layout) y se borra al llegar al login. Es
+  un almacén externo: un lote que sigue procesando tras salir del módulo guarda su avance.
+- `staleTimes.dynamic = 30` (next.config): volver a una página visitada hace < 30 s no la pide al
+  servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
+  del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
+
+## 8. Estado actual (2026-11-02) y siguientes pasos
 
 **Funcionando en local contra el Supabase real** (migraciones aplicadas, primer administrador creado):
 
@@ -173,8 +257,14 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
   cuenta de servicio de Silogtran.
 - ✅ Financiero › Transferencia › **Migración anticipo SAP** (ex SMA), probado con planillas reales y
   `X_API_KEY` configurada (detecta lo ya migrado y no lo reenvía).
-- ✅ Pruebas: `db:test` (38), `test:fichas`, `test:anticipos`, `probar:waf`; lint, tipos y build limpios.
+- ✅ Pruebas: `db:test` (47), `test:fichas`, `test:anticipos`, `probar:waf`; lint, tipos y build limpios.
 
 **Pendiente:**
 - ⏭️ Desplegar en **Vercel** (Node 24.x + variables; ver §7).
-- ⏭️ Módulos en construcción: Despacho, Factura, Estudios (propuesta en §6).
+- ✅ Despacho › Manifiesto › **Expedir manifiesto SICETAC**: probado de punta a punta con un
+  manifiesto real (calcular y expedir con radicado).
+- ✅ Despacho › Cumplido manifiesto › **Migración cumplido RNDC**: probado radicando cumplidos
+  reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
+- 🔄 Aplicar en Supabase la migración `20261102020000_proteger_superadmin.sql` (seguridad de roles
+  y usuarios).
+- ⏭️ Módulos en construcción: Factura, Estudios (propuesta en §6).

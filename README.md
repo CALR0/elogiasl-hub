@@ -19,7 +19,8 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 
 | Módulo | Qué hay | Estado |
 |---|---|---|
-| **Despacho** | Manifiesto · Cumplido manifiesto | En construcción |
+| **Despacho** | Manifiesto › **Expedir manifiesto SICETAC** | ✅ Funcionando |
+| | Cumplido manifiesto › **Migración cumplido RNDC** | ✅ Funcionando |
 | **Financiero** | Factura | En construcción |
 | | Transferencia › **Migración anticipo SAP** | ✅ Funcionando |
 | **Maestros** | Vehículo › **Generar ficha técnica** | ✅ Funcionando |
@@ -36,10 +37,23 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   transferencia; el portal busca los anticipos de flota de terceros en Silogtran, los reenvía a SAP
   y confirma el resultado. No reenvía lo que ya está migrado ni lo repetido. Resultado exportable a
   Excel. *(Antes era la app SMA.)*
+- **Expedir manifiesto SICETAC** (Despacho › Manifiesto) — para manifiestos que el Ministerio
+  rechazó porque el flete quedó por debajo del SICETAC (error MAN045): el portal calcula el valor
+  SICETAC vigente del viaje, ajusta el flete y sus retenciones en el XML y, con tu confirmación,
+  lo expide ante el Ministerio mostrando el número de radicado.
+- **Migración cumplido RNDC** (Despacho › Cumplido manifiesto) — para cumplidos que el Ministerio
+  rechazó por las retenciones (FOPAT o retención en la fuente) o por remesas sin cumplir: cumple
+  primero las remesas que el RNDC no tenga cumplidas (con el último XML del log RNDC de Silogtran),
+  toma el flete pactado que tiene el RNDC, corrige las retenciones y radica el cumplido.
 - **Roles** — crear, editar, activar o inactivar roles, marcando a qué partes del portal acceden.
-- **Usuarios** — crear cuentas, asignarles un rol, editarlas y activarlas o inactivarlas.
+  Nadie (salvo el administrador) puede modificar el rol al que pertenece.
+- **Usuarios** — crear cuentas, asignarles un rol, editarlas y activarlas o inactivarlas. Las
+  cuentas de administrador solo las gestiona otro administrador.
 - **Visor de logs** — todo lo que pasa en el portal, con filtros (fechas, usuario, módulo, acción,
   resultado y búsqueda), detalle de cada registro (incluido lo que se envió a SAP) y exportación a CSV.
+
+En todos los módulos, lo que escribiste y los resultados **siguen ahí si cambias de módulo y
+vuelves** (incluso si un lote sigue procesando); se borran al recargar la página o al cerrar sesión.
 
 Los módulos "en construcción" ya tienen su lugar en el menú y en los permisos; se irán desarrollando.
 
@@ -69,7 +83,8 @@ npm run dev          # http://localhost:3000
 - Variables de entorno: copia `.env.example` a `.env` (o `.env.local`) y complétalo.
 - Base de datos: los archivos de `supabase/migrations/` se aplican en orden en el SQL Editor de Supabase.
 - Pruebas: `npm run db:test` (permisos de la base de datos), `npm run test:fichas`,
-  `npm run test:anticipos`, `npm run probar:waf` (firewall de Silogtran).
+  `npm run test:anticipos`, `npm run test:sicetac`, `npm run test:cumplidos`, `npm run probar:waf` (firewall de Silogtran),
+  `npm run probar:sicetac` (cálculo en el portal SICETAC).
 - Revisión: `npm run lint` · `npm run type-check` · `npm run build`.
 
 El detalle técnico, las decisiones tomadas y el estado del proyecto están en
