@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Aviso } from "@/components/ui/aviso";
 import { Button } from "@/components/ui/button";
+import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import {
   entradasUnicas,
@@ -73,18 +74,28 @@ const filaError = (
 });
 
 export function MigradorAnticipos({ simulado }: { simulado: boolean }) {
-  const [tipo, setTipo] = useState<TipoBusqueda>("planilla");
-  const [texto, setTexto] = useState("");
-  const [filas, setFilas] = useState<FilaMigracion[]>([]);
-  const [progreso, setProgreso] = useState<{
+  const [tipo, setTipo] = useEstadoSesion<TipoBusqueda>(
+    "anticipos.tipo",
+    "planilla",
+  );
+  const [texto, setTexto] = useEstadoSesion("anticipos.texto", "");
+  const [filas, setFilas] = useEstadoSesion<FilaMigracion[]>(
+    "anticipos.filas",
+    [],
+  );
+  const [progreso, setProgreso] = useEstadoSesion<{
     hecho: number;
     total: number;
-  } | null>(null);
+  } | null>("anticipos.progreso", null);
   const [exportando, setExportando] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useEstadoSesion<string | undefined>(
+    "anticipos.error",
+    undefined,
+  );
   const { ancla, visibles, reiniciar, props } = usePaginacion(
     filas,
     POR_PAGINA,
+    "anticipos",
   );
 
   const { unicas, duplicadas } = entradasUnicas(texto, tipo);

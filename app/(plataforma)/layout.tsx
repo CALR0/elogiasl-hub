@@ -1,4 +1,5 @@
 import { MenuLateral } from "@/components/plataforma/menu-lateral";
+import { MemoriaSesion } from "@/components/sesion/memoria-sesion";
 import { Migas } from "@/components/plataforma/migas";
 import { puede, requireUsuario } from "@/lib/auth";
 import { filtrarArbol } from "@/lib/modulos";
@@ -31,7 +32,7 @@ export default async function PlataformaLayout({
         </div>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-16 sm:px-6 lg:px-10 lg:pt-8">
-          {children}
+          <MemoriaSesion usuarioId={usuario.id}>{children}</MemoriaSesion>
         </main>
       </div>
     </div>

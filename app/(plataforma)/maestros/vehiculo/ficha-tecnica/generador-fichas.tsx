@@ -15,6 +15,7 @@ import {
 import { Aviso } from "@/components/ui/aviso";
 import { Button } from "@/components/ui/button";
 import { Dialogo } from "@/components/ui/dialogo";
+import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import type {
   Par,
@@ -109,17 +110,24 @@ function selloArchivo() {
 }
 
 export function GeneradorFichas() {
-  const [placas, setPlacas] = useState<string[]>([]);
-  const [texto, setTexto] = useState("");
-  const [filas, setFilas] = useState<Fila[]>([]);
-  const [consultando, setConsultando] = useState(false);
+  const [placas, setPlacas] = useEstadoSesion<string[]>("fichas.placas", []);
+  const [texto, setTexto] = useEstadoSesion("fichas.texto", "");
+  const [filas, setFilas] = useEstadoSesion<Fila[]>("fichas.filas", []);
+  const [consultando, setConsultando] = useEstadoSesion(
+    "fichas.consultando",
+    false,
+  );
   const [descarga, setDescarga] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string>();
+  const [aviso, setAviso] = useEstadoSesion<string | undefined>(
+    "fichas.aviso",
+    undefined,
+  );
   const [visor, setVisor] = useState<Fila | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
   const { ancla, visibles, reiniciar, props } = usePaginacion(
     filas,
     POR_PAGINA,
+    "fichas",
   );
 
   const encontradas = filas.filter((f) => f.estado === "ok");

@@ -27,9 +27,16 @@ const nextConfig: NextConfig = {
       "./node_modules/@sparticuz/chromium/bin/**",
     ],
     "/api/anticipos/**": ["./node_modules/@sparticuz/chromium/bin/**"],
+    "/api/sicetac/**": ["./node_modules/@sparticuz/chromium/bin/**"],
+    "/api/cumplidos/**": ["./node_modules/@sparticuz/chromium/bin/**"],
   },
   experimental: {
     authInterrupts: true, // forbidden() / unauthorized() en lib/auth.ts
+    // Caché del navegador: volver a una página visitada hace menos de 30 s no la
+    // pide de nuevo al servidor (lo escrito y los resultados viven en
+    // components/sesion/memoria-sesion). Las acciones que cambian datos invalidan
+    // con revalidatePath, y la API y las acciones siempre verifican permisos.
+    staleTimes: { dynamic: 30 },
   },
   async headers() {
     return [

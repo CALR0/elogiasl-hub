@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cx, rango } from "@/lib/utils";
 
@@ -11,8 +12,19 @@ export const POR_PAGINA = 10;
  * al servidor (`.range(desde, hasta)` + `count: "exact"`) y el número de
  * página viaja en la URL (?pagina=2); el componente <Paginacion> se reutiliza.
  */
-export function usePaginacion<T>(items: T[], porPagina = POR_PAGINA) {
-  const [paginaElegida, setPagina] = useState(1);
+export function usePaginacion<T>(
+  items: T[],
+  porPagina = POR_PAGINA,
+  /** Si se da, la página elegida se recuerda al cambiar de módulo y volver. */
+  clave?: string,
+) {
+  const [paginaLocal, setPaginaLocal] = useState(1);
+  const [paginaSesion, setPaginaSesion] = useEstadoSesion(
+    `paginacion.${clave ?? "-"}`,
+    1,
+  );
+  const paginaElegida = clave ? paginaSesion : paginaLocal;
+  const setPagina = clave ? setPaginaSesion : setPaginaLocal;
   const ancla = useRef<HTMLDivElement>(null);
   const paginas = Math.max(1, Math.ceil(items.length / porPagina));
   // Si un filtro reduce la lista, no quedarse en una página que ya no existe

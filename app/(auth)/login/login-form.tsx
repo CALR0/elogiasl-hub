@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import { limpiarMemoriaSesion } from "@/components/sesion/memoria-sesion";
 import { PantallaCarga } from "@/components/ui/pantalla-carga";
 import { iniciarSesion } from "./actions";
 
 export function LoginForm({ next, demo }: { next?: string; demo: boolean }) {
+  // Cerró sesión (o venció): lo que quedó en memoria de los módulos se borra
+  useEffect(() => limpiarMemoriaSesion(), []);
   const [state, formAction, pending] = useActionState(iniciarSesion, null);
   const [verClave, setVerClave] = useState(false);
   // Controlado: React limpia el formulario tras cada envío y así el correo no
@@ -90,7 +93,11 @@ export function LoginForm({ next, demo }: { next?: string; demo: boolean }) {
         {pending && (
           <LoaderCircle className="size-4 animate-spin" aria-hidden />
         )}
-        {pending ? "Iniciando sesión…" : demo ? "Entrar (demostración)" : "Ingresar"}
+        {pending
+          ? "Iniciando sesión…"
+          : demo
+            ? "Entrar (demostración)"
+            : "Ingresar"}
       </button>
     </form>
   );

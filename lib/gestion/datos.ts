@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { MODO_DEMO } from "@/lib/demo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -10,11 +11,13 @@ import type { FiltrosLogs, LogFila, RolFila, UsuarioFila } from "./tipos";
  * requirePermiso(...) en la página: roles y usuarios se leen con la secret key
  * (para contar usuarios por rol aunque quien mira no gestione usuarios); los
  * logs con la sesión del usuario (RLS).
+ * Roles y usuarios van con cache() de React: una misma petición (p. ej. una
+ * acción que valida el rol y el usuario) los lee una sola vez.
  */
 
 export const LOGS_POR_PAGINA = 10;
 
-export async function listarRoles(): Promise<RolFila[]> {
+export const listarRoles = cache(async (): Promise<RolFila[]> => {
   if (MODO_DEMO) return structuredClone(almacenDemo().roles);
 
   const { data, error } = await createAdminClient()
@@ -38,14 +41,14 @@ export async function listarRoles(): Promise<RolFila[]> {
       (p) => p.modulo_clave,
     ),
   }));
-}
+});
 
 export async function obtenerRol(id: string): Promise<RolFila | null> {
   const roles = await listarRoles();
   return roles.find((r) => r.id === id) ?? null;
 }
 
-export async function listarUsuarios(): Promise<UsuarioFila[]> {
+export const listarUsuarios = cache(async (): Promise<UsuarioFila[]> => {
   if (MODO_DEMO) return structuredClone(almacenDemo().usuarios);
 
   const { data, error } = await createAdminClient()
@@ -67,7 +70,7 @@ export async function listarUsuarios(): Promise<UsuarioFila[]> {
     ultimoAcceso: p.ultimo_acceso,
     creado: p.created_at,
   }));
-}
+});
 
 // ─── Logs ───────────────────────────────────────────────────────────────────
 

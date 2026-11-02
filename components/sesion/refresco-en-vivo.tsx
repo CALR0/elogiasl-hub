@@ -36,7 +36,7 @@ export function RefrescoEnVivo({ tablas }: { tablas: readonly string[] }) {
           { event: "*", schema: "public", table },
           () => {
             clearTimeout(espera);
-            espera = setTimeout(() => router.refresh(), 400);
+            espera = setTimeout(() => router.refresh(), 1000);
           },
         );
       }
