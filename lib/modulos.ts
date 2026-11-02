@@ -23,6 +23,8 @@ export type IconoModulo =
   | "despacho"
   | "manifiesto"
   | "cumplido"
+  | "expedir"
+  | "subir"
   | "financiero"
   | "factura"
   | "transferencia"
@@ -65,12 +67,32 @@ export const MODULOS: readonly NodoModulo[] = [
         nombre: "Manifiesto",
         descripcion: "Gestión de manifiestos de carga.",
         icono: "manifiesto",
+        hijos: [
+          {
+            clave: "despacho.manifiesto.expedir-sicetac",
+            nombre: "Expedir manifiesto SICETAC",
+            descripcion:
+              "Recalcula el flete con el SICETAC vigente y expide ante el Ministerio los manifiestos rechazados por MAN045.",
+            icono: "expedir",
+            estado: "disponible",
+          },
+        ],
       },
       {
         clave: "despacho.cumplido-manifiesto",
         nombre: "Cumplido manifiesto",
         descripcion: "Registro y control del cumplido de manifiestos.",
         icono: "cumplido",
+        hijos: [
+          {
+            clave: "despacho.cumplido-manifiesto.migracion-rndc",
+            nombre: "Migración cumplido RNDC",
+            descripcion:
+              "Corrige las retenciones con el flete del RNDC y radica los cumplidos rechazados (CMA273, CMA262).",
+            icono: "subir",
+            estado: "disponible",
+          },
+        ],
       },
     ],
   },

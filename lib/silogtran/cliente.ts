@@ -14,6 +14,9 @@ import * as cheerio from "cheerio";
 const LOGIN_PAGE = "index.php?page=LoginPage";
 const BUSCAR_PAGE = "index.php?page=Maestros.Vehiculo.Buscar";
 const LOG_PAGE = "index.php?page=Maestros.Interfaz.BuscarLogInterfaz";
+// Visor del log RNDC (Vue): la página entrega un JWT "token_fenix" para la API GraphQL
+const VISOR_RNDC_PAGE =
+  "index.php?page=Maestros.InterfazlogRndc.VisorLogInterfazRndcV2";
 // Interfaz "QAS DAABON OC SAP" (autocompletar: hay que fijar el IDHidden, no solo el texto)
 const INTERFAZ_ID = process.env.SILOG_INTERFAZ_ID || "139";
 const INTERFAZ_TEXTO = process.env.SILOG_INTERFAZ_TEXTO || "QAS DAABON OC SAP";
@@ -21,6 +24,8 @@ const LOG_FECHA_INI = process.env.SILOG_LOG_FECHA_INI || "2026-01-01";
 const LOG_FECHA_FIN = process.env.SILOG_LOG_FECHA_FIN || "2030-01-01";
 const TERCERO_PAGE = (codigo: string) =>
   `index.php?page=Maestros.Tercero.Home_111&tercero_codigo=${Number.parseInt(codigo, 10)}`;
+const REMESA_PAGE = (codigo: string) =>
+  `index.php?page=Despacho.Remesa_003.Home_111&remesa_codigo=${encodeURIComponent(codigo)}`;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
@@ -456,6 +461,22 @@ export class Silogtran {
     });
   }
 
+  /** HTML de la remesa (origen/destino, horas pactadas, tipo de remesa RNDC, ítems). */
+  paginaRemesa(codigo: string) {
+    return this.enCola(async () => {
+      const r = await this.html(REMESA_PAGE(codigo));
+      if (esLogin(r.text))
+        throw new SilogtranError("La sesión de Silogtran expiró.", {
+          sesionExpirada: true,
+        });
+      if (!r.text.includes("tiempoCarguePactado"))
+        throw new SilogtranError(
+          `No se encontró la remesa ${codigo} en Silogtran.`,
+        );
+      return r.text;
+    });
+  }
+
   /**
    * HTML de resultados del Log de la Interfaz para una planilla (Datos de
    * Entrada) o un consolidado de transferencia (Documento). El filtro es
@@ -492,6 +513,30 @@ export class Silogtran {
           sesionExpirada: true,
         });
       return r.text;
+    });
+  }
+
+  /**
+   * Token (JWT, ~1 h) que el Visor Log Interfaz RNDC usa para consultar la API
+   * GraphQL de Colombia Software; viene en el HTML como
+   * localStorage.setItem('token_fenix', '…').
+   */
+  tokenVisorRndc() {
+    return this.enCola(async () => {
+      const r = await this.html(VISOR_RNDC_PAGE);
+      if (esLogin(r.text))
+        throw new SilogtranError("La sesión de Silogtran expiró.", {
+          sesionExpirada: true,
+        });
+      const token =
+        /localStorage\.setItem\(\s*['"]token_fenix['"]\s*,\s*['"]([^'"]+)['"]/.exec(
+          r.text,
+        )?.[1];
+      if (!token)
+        throw new SilogtranError(
+          "El Visor Log Interfaz RNDC de Silogtran no entregó el token de consulta.",
+        );
+      return token;
     });
   }
 

@@ -23,6 +23,9 @@ export const ACCIONES_AUDITORIA: Record<string, string> = {
   "ficha.consultar": "Consultó una ficha técnica",
   "ficha.exportar": "Exportó fichas a Excel",
   "silogtran.sesion": "Inició sesión en Silogtran (cuenta de servicio)",
+  "sicetac.calcular": "Calculó el SICETAC de un manifiesto",
+  "manifiesto.expedir": "Expidió un manifiesto ante el Ministerio",
+  "cumplido.migrar": "Migró un cumplido al RNDC",
 };
 
 export const etiquetaAccion = (codigo: string) =>

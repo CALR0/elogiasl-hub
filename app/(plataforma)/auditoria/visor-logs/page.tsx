@@ -214,6 +214,8 @@ function FilaLogItem({ log: l }: { log: LogFila }) {
   const r = RESULTADOS[l.resultado];
   const Icono = r.icono;
   const actor = l.actorNombre ?? l.actorEmail ?? "Sistema";
+  const modulo = etiquetaModulo(l.modulo);
+  const accion = etiquetaAccion(l.accion);
 
   return (
     <li>
@@ -233,11 +235,15 @@ function FilaLogItem({ log: l }: { log: LogFila }) {
               </span>
             )}
           </span>
-          <span className="text-muted-foreground col-span-2 truncate text-xs lg:col-span-1 lg:text-sm">
-            {etiquetaModulo(l.modulo)}
+          {/* En la fila, solo el módulo usado (la ruta completa va en el detalle) */}
+          <span
+            title={modulo}
+            className="text-muted-foreground col-span-2 truncate text-xs lg:col-span-1 lg:text-sm"
+          >
+            {modulo.split(" › ").at(-1)}
           </span>
-          <span className="min-w-0 truncate">
-            {etiquetaAccion(l.accion)}
+          <span title={accion} className="min-w-0 truncate">
+            {accion}
             {l.entidadId && (
               <span className="text-muted-foreground"> · {l.entidadId}</span>
             )}
@@ -258,6 +264,8 @@ function FilaLogItem({ log: l }: { log: LogFila }) {
         </summary>
 
         <dl className="bg-muted/30 grid gap-x-6 gap-y-3 border-t px-4 py-4 text-xs sm:grid-cols-2 lg:grid-cols-4 lg:px-5">
+          <Dato titulo="Módulo" valor={modulo} className="sm:col-span-2" />
+          <Dato titulo="Acción" valor={accion} className="sm:col-span-2" />
           <Dato titulo="Código de acción" valor={<code>{l.accion}</code>} />
           <Dato
             titulo="Objeto"
@@ -277,7 +285,9 @@ function FilaLogItem({ log: l }: { log: LogFila }) {
               className="sm:col-span-2 lg:col-span-4"
               valor={
                 <pre className="bg-card max-h-96 overflow-auto rounded-lg border p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-                  {JSON.stringify(valor, null, 2)}
+                  {typeof valor === "string"
+                    ? valor
+                    : JSON.stringify(valor, null, 2)}
                 </pre>
               }
             />
@@ -295,7 +305,33 @@ function FilaLogItem({ log: l }: { log: LogFila }) {
  */
 function bloquesDetalle(detalle: Record<string, unknown> | null) {
   if (!detalle) return [];
-  const { payload, respuesta, ...resto } = detalle;
+  const {
+    payload,
+    respuesta,
+    xml_original,
+    xml_enviado,
+    respuesta_rndc,
+    remesas,
+    ...resto
+  } = detalle;
+  // Migración cumplido RNDC: cumplido de cada remesa (antes del manifiesto),
+  // con su XML y la respuesta en bloques propios
+  const listaRemesas = Array.isArray(remesas)
+    ? (remesas as Record<string, unknown>[])
+    : [];
+  const bloquesRemesas: [string, unknown][] = [];
+  const resumenRemesas = listaRemesas.map((r) => {
+    const { xml_enviado: xml, respuesta_rndc: resp, ...datos } = r;
+    if (xml != null)
+      bloquesRemesas.push([`Remesa ${r.remesa}: XML de cumplido enviado`, xml]);
+    if (resp != null)
+      bloquesRemesas.push([
+        `Remesa ${r.remesa}: respuesta del Ministerio`,
+        resp,
+      ]);
+    return datos;
+  });
+  if (resumenRemesas.length) resto.remesas = resumenRemesas;
   const tituloPayload =
     resto.enviado_a_sap === true
       ? "Payload enviado a SAP"
@@ -306,6 +342,14 @@ function bloquesDetalle(detalle: Record<string, unknown> | null) {
   if (Object.keys(resto).length) bloques.push(["Detalle", resto]);
   if (payload != null) bloques.push([tituloPayload, payload]);
   if (respuesta != null) bloques.push(["Respuesta de SAP", respuesta]);
+  bloques.push(...bloquesRemesas);
+  // Expedir manifiesto SICETAC: XML original, XML enviado al RNDC (ambos sin
+  // credenciales) y su respuesta
+  if (xml_original != null) bloques.push(["XML original", xml_original]);
+  if (xml_enviado != null)
+    bloques.push(["XML enviado al Ministerio", xml_enviado]);
+  if (respuesta_rndc != null)
+    bloques.push(["Respuesta del Ministerio", respuesta_rndc]);
   return bloques;
 }
 
