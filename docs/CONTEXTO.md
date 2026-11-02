@@ -1,6 +1,6 @@
-# soporte-elogiasl (Portal Elogia) — Contexto y hoja de ruta
+# soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
-> Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Portal Elogia** (`lib/config.ts`).
+> Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
 > Última actualización: 2026-10-31.
 > Resumen para usuarios: [README.md](../README.md).
 
@@ -232,8 +232,11 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
    de Silogtran (`SILOG_USUARIO`/`SILOG_CLAVE`), `WAF_CHROME_PATH` (solo local) y `X_API_KEY` de AWS.
-5. Vercel (pendiente): importar el repo, **Node.js 24.x**, las mismas variables salvo
-   `WAF_CHROME_PATH`, y `NEXT_PUBLIC_APP_URL` con la URL de Vercel.
+5. Vercel (desplegado en https://elogiasl-hub.vercel.app): repo importado, **Node.js 24.x**,
+   región de funciones **pdx1** (la misma de Supabase, us-west-2), las mismas variables salvo
+   `WAF_CHROME_PATH` y el mismo `SESSION_SECRET` que en local (comparten la sesión de Silogtran
+   guardada en Supabase). En Supabase → Authentication → URL Configuration, Site URL y Redirect
+   URLs con la URL de Vercel. Cada push a `main` despliega a producción.
 
 ### Memoria de los módulos y caché (2026-11-02)
 - `components/sesion/memoria-sesion.tsx` — `useEstadoSesion(clave, inicial)`: como `useState`, pero
@@ -260,11 +263,12 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
 - ✅ Pruebas: `db:test` (47), `test:fichas`, `test:anticipos`, `probar:waf`; lint, tipos y build limpios.
 
 **Pendiente:**
-- ⏭️ Desplegar en **Vercel** (Node 24.x + variables; ver §7).
+- ✅ Desplegado en **Vercel**: https://elogiasl-hub.vercel.app (región pdx1, Node 24.x; ver §7),
+  conectado al Supabase real.
 - ✅ Despacho › Manifiesto › **Expedir manifiesto SICETAC**: probado de punta a punta con un
   manifiesto real (calcular y expedir con radicado).
 - ✅ Despacho › Cumplido manifiesto › **Migración cumplido RNDC**: probado radicando cumplidos
   reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
-- 🔄 Aplicar en Supabase la migración `20261102020000_proteger_superadmin.sql` (seguridad de roles
-  y usuarios).
+- ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
+- Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
 - ⏭️ Módulos en construcción: Factura, Estudios (propuesta en §6).

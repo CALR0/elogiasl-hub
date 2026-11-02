@@ -1,4 +1,4 @@
-# Portal Elogia · soporte-elogiasl
+# Elogia HUB · soporte-elogiasl
 
 **El portal de soporte de Elogia Soluciones Logísticas:** un solo lugar, con un solo inicio de
 sesión, donde el equipo encuentra las herramientas y soluciones para sus procesos de la operación.
@@ -70,8 +70,9 @@ cada consulta.
 
 - **Next.js 16 + React 19 + TypeScript**, estilos con **Tailwind CSS**.
 - **Supabase**: inicio de sesión, base de datos con permisos por fila y actualizaciones en vivo.
-- **Vercel** para publicarlo en internet (pendiente).
-- Diseño con la gama de colores y el logo de Elogia, modo claro/oscuro y adaptado a celular.
+- **Vercel** para publicarlo en internet: https://elogiasl-hub.vercel.app
+- Diseño con la gama de colores y el logo de Elogia, adaptado a celular. Abre en modo claro; el
+  oscuro se activa con el botón de tema y se recuerda en ese navegador.
 
 ## Para desarrolladores
 

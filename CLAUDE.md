@@ -1,4 +1,4 @@
-# soporte-elogiasl (Portal Elogia) — Guía de arranque para Claude
+# soporte-elogiasl (Elogia HUB) — Guía de arranque para Claude
 
 Plataforma interna de Elogia Soluciones Logísticas que unifica SMA (anticipos SAP), FVE-C (fichas
 de vehículo) y, más adelante, Estudios (elogix). El usuario y el equipo hablan español: responde,

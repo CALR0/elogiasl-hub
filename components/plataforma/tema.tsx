@@ -6,10 +6,10 @@ import { cx } from "@/lib/utils";
 const CLAVE = "portal-tema";
 
 /**
- * Se ejecuta en <head> antes de pintar: aplica el tema guardado o, si no hay,
- * el del sistema operativo.
+ * Se ejecuta en <head> antes de pintar. Modo claro por defecto: el oscuro solo
+ * si el usuario lo eligió (no se sigue el tema del sistema operativo).
  */
-export const SCRIPT_TEMA = `try{var t=localStorage.getItem("${CLAVE}");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`;
+export const SCRIPT_TEMA = `try{if(localStorage.getItem("${CLAVE}")==="dark")document.documentElement.classList.add("dark")}catch(e){}`;
 
 /** Cambia entre claro y oscuro y lo recuerda. Lee el estado del DOM. */
 function alternarTema() {

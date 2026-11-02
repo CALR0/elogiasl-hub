@@ -36,7 +36,7 @@ export default async function LoginPage({
             <span className="bg-brand h-1 w-10 rounded-full" aria-hidden />
             <p className="text-muted-foreground text-sm">
               Ingresa a <span className="text-foreground font-medium">{APP.nombre}</span>{" "}
-              con tu cuenta corporativa.
+              con tus datos registrados.
             </p>
           </div>
 

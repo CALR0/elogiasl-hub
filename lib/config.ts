@@ -3,7 +3,7 @@
  * cambiarlo aquí lo cambia en el login, el menú y los títulos de pestaña.
  */
 export const APP = {
-  nombre: "Portal Elogia",
+  nombre: "Elogia HUB",
   descripcion: "Plataforma integrada de Elogia Soluciones Logísticas",
   empresa: "Elogia Soluciones Logísticas",
 } as const;
