@@ -1,0 +1,7 @@
+# Archivos de entorno locales: nunca deben subirse al build de Vercel.
+# Vercel usa sus propias Environment Variables (Project Settings → Env Vars).
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
