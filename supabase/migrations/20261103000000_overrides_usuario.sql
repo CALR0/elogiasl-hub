@@ -20,7 +20,9 @@ create table public.usuario_permisos (
 
 create index usuario_permisos_usuario_idx on public.usuario_permisos (usuario_id);
 
--- Reemplaza tiene_permiso para incluir overrides del usuario.
+-- Reemplaza tiene_permiso para incluir overrides del usuario. La acción es
+-- aceptada mientras el módulo esté en los accesos del rol (o en un otorgar);
+-- en la plataforma la autorización se hace a nivel de módulo (ver lib/auth.ts).
 create or replace function public.tiene_permiso(p_modulo text, p_accion text default 'ver')
 returns boolean
 language sql
@@ -45,14 +47,14 @@ as $$
             and modulo_clave = p_modulo
             and tipo = 'revocar'
         ) then false
-        -- Otorgado al usuario: permite cualquier acción válida sobre el módulo
+        -- Otorgado al usuario: siempre permite
         when exists (
           select 1 from public.usuario_permisos
           where usuario_id = auth.uid()
             and modulo_clave = p_modulo
             and tipo = 'otorgar'
         ) then true
-        -- Sin override: lo que diga el rol
+        -- Sin override: el módulo debe estar en el rol
         else exists (
           select 1 from public.perfiles p
           join public.roles r on r.id = p.rol_id
@@ -60,7 +62,6 @@ as $$
           where p.id = auth.uid()
             and p.activo and r.activo
             and rp.modulo_clave = p_modulo
-            and p_accion = any (rp.acciones)
         )
       end
     )
