@@ -45,14 +45,12 @@ as $$
             and modulo_clave = p_modulo
             and tipo = 'revocar'
         ) then false
-        -- Otorgado al usuario: permite si la acción existe en el módulo
+        -- Otorgado al usuario: permite cualquier acción válida sobre el módulo
         when exists (
-          select 1 from public.usuario_permisos up
-          join public.modulos m on m.clave = up.modulo_clave
-          where up.usuario_id = auth.uid()
-            and up.modulo_clave = p_modulo
-            and up.tipo = 'otorgar'
-            and p_accion = any (m.acciones)
+          select 1 from public.usuario_permisos
+          where usuario_id = auth.uid()
+            and modulo_clave = p_modulo
+            and tipo = 'otorgar'
         ) then true
         -- Sin override: lo que diga el rol
         else exists (
