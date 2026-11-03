@@ -225,7 +225,10 @@ export class Silogtran {
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
       defaultViewport: { width: 1280, height: 800 },
     };
-    if (process.env.WAF_CHROME_PATH) {
+    // En Linux (Vercel) siempre se usa @sparticuz/chromium: la ruta de Chrome
+    // local solo tiene sentido fuera de Linux y, si se filtrara al servidor,
+    // apuntaría a un ejecutable que no existe allí.
+    if (process.env.WAF_CHROME_PATH && process.platform !== "linux") {
       opciones.executablePath = process.env.WAF_CHROME_PATH;
     } else {
       if (process.platform !== "linux") {
