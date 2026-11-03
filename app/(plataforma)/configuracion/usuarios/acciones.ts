@@ -27,7 +27,15 @@ const clave = z
   .string()
   .min(10, "La contraseña debe tener al menos 10 caracteres.")
   .max(72, "La contraseña admite máximo 72 caracteres.");
-const nombre = z.string().trim().min(3, "Escribe el nombre completo.").max(120);
+const nombre = z
+  .string()
+  .trim()
+  .min(3, "Escribe el nombre completo.")
+  .max(120)
+  .regex(
+    /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+$/,
+    "El nombre solo admite letras, espacios, guiones y apóstrofos.",
+  );
 
 function mensajeError(codigo: string | undefined, mensaje: string) {
   if (

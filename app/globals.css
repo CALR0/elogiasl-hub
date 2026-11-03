@@ -188,6 +188,16 @@
  * fundidos suaves de opacidad, que no marean y se ven fluidos.
  * Va fuera de @layer a propósito: el CSS sin capa siempre gana a las utilidades.
  */
+/*
+ * Edge/Chromium muestran un icono nativo de "mostrar contraseña" en inputs
+ * type=password. Como el formulario de usuarios ya trae su propio ojito,
+ * ocultamos el nativo para no duplicar el control.
+ */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

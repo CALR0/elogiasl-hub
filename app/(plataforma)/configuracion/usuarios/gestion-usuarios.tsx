@@ -346,9 +346,20 @@ function FormularioUsuario({
           <Input
             id="u-nombre"
             value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            onChange={(e) =>
+              // Filtra números y símbolos: solo letras (incl. ñ, acentos), espacios, guiones y apóstrofos
+              setNombre(
+                e.target.value.replace(
+                  /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]/g,
+                  "",
+                ),
+              )
+            }
             required
             minLength={3}
+            maxLength={120}
+            pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .\-]+"
+            title="Solo letras, espacios, guiones y apóstrofos."
             autoComplete="off"
           />
         </Field>
