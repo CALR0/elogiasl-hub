@@ -1,16 +1,21 @@
 import type { Metadata } from "next";
 import { Encabezado } from "@/components/plataforma/encabezado";
 import { requirePermiso } from "@/lib/auth";
-import { listarRoles, listarUsuarios } from "@/lib/gestion/datos";
+import {
+  listarOverrides,
+  listarRoles,
+  listarUsuarios,
+} from "@/lib/gestion/datos";
 import { GestionUsuarios } from "./gestion-usuarios";
 
 export const metadata: Metadata = { title: "Usuarios" };
 
 export default async function UsuariosPage() {
   const yo = await requirePermiso("configuracion.usuarios");
-  const [usuarios, roles] = await Promise.all([
+  const [usuarios, roles, overrides] = await Promise.all([
     listarUsuarios(),
     listarRoles(),
+    listarOverrides(),
   ]);
 
   return (
@@ -29,7 +34,10 @@ export default async function UsuariosPage() {
             id: r.id,
             nombre: r.nombre,
             activo: r.activo,
+            esSuperadmin: r.esSuperadmin,
+            accesos: r.accesos,
           }))}
+        overrides={overrides}
         miId={yo.id}
       />
     </div>

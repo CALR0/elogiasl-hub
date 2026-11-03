@@ -6,8 +6,13 @@ import { requirePermiso, type UsuarioActual } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { MODO_DEMO } from "@/lib/demo";
 import { almacenDemo } from "@/lib/gestion/demo";
-import { listarRoles, listarUsuarios } from "@/lib/gestion/datos";
-import type { Resultado } from "@/lib/gestion/tipos";
+import {
+  listarRoles,
+  listarUsuarios,
+  overridesDelUsuario,
+} from "@/lib/gestion/datos";
+import type { OverridePermiso, Resultado } from "@/lib/gestion/tipos";
+import { hojas } from "@/lib/modulos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,6 +26,8 @@ import { createClient } from "@/lib/supabase/server";
 
 const MODULO = "configuracion.usuarios";
 const BLOQUEO = "876000h"; // ~100 años: Supabase no tiene "bloqueo indefinido"
+/** Hojas válidas del árbol: los overrides solo aplican a funcionalidades. */
+const HOJAS = hojas().map((h) => h.clave);
 
 const email = z.email("Correo inválido.").trim().toLowerCase();
 const clave = z
@@ -342,5 +349,128 @@ export async function cambiarEstadoUsuario(
     mensaje: activo
       ? `La cuenta de ${actual.nombre ?? actual.email} está activa.`
       : `La cuenta de ${actual.nombre ?? actual.email} quedó inactiva.`,
+  };
+}
+
+const esquemaAccesos = z.object({
+  usuarioId: z.uuid(),
+  /** Hojas con acceso EFECTIVO que debe quedar el usuario. */
+  accesos: z
+    .array(z.string())
+    .refine((a) => a.every((c) => HOJAS.includes(c)), "Hay módulos inválidos."),
+});
+
+/**
+ * Fija los accesos efectivos del usuario a partir de un conjunto marcado en la
+ * UI. Compara contra el rol base y persiste solo las diferencias como
+ * overrides (otorgar lo que el rol no trae, revocar lo que trae y no está
+ * marcado). Al cambiar de rol en el futuro, los overrides se conservan.
+ */
+export async function guardarAccesosUsuario(entrada: {
+  usuarioId: string;
+  accesos: string[];
+}): Promise<Resultado> {
+  const yo = await requirePermiso(MODULO);
+  const p = esquemaAccesos.safeParse(entrada);
+  if (!p.success) return { ok: false, error: p.error.issues[0].message };
+
+  const actual = (await listarUsuarios()).find((u) => u.id === p.data.usuarioId);
+  if (!actual) return { ok: false, error: "El usuario no existe." };
+  if (p.data.usuarioId === yo.id)
+    return {
+      ok: false,
+      error: "No puedes editar tus propios accesos individuales.",
+    };
+  const rol = actual.rolId
+    ? (await listarRoles()).find((r) => r.id === actual.rolId)
+    : null;
+  if (!rol)
+    return {
+      ok: false,
+      error: "El usuario no tiene rol asignado. Asígnalo primero.",
+    };
+  if (rol.esSuperadmin)
+    return {
+      ok: false,
+      error:
+        "El administrador tiene acceso total; no admite overrides individuales.",
+    };
+  if (!yo.rol.esSuperadmin && rol.esSuperadmin)
+    return { ok: false, error: SOLO_SUPERADMIN };
+
+  const efectivos = new Set(HOJAS.filter((c) => p.data.accesos.includes(c)));
+  const base = new Set(rol.accesos.filter((c) => HOJAS.includes(c)));
+  // Diferencias contra el rol → overrides a persistir
+  const nuevos: OverridePermiso[] = [];
+  for (const c of HOJAS) {
+    if (efectivos.has(c) && !base.has(c))
+      nuevos.push({ modulo: c, tipo: "otorgar" });
+    else if (!efectivos.has(c) && base.has(c))
+      nuevos.push({ modulo: c, tipo: "revocar" });
+  }
+
+  const previos = await overridesDelUsuario(p.data.usuarioId);
+  const sinCambios =
+    previos.length === nuevos.length &&
+    previos.every((o) =>
+      nuevos.find((n) => n.modulo === o.modulo && n.tipo === o.tipo),
+    );
+  if (sinCambios) return { ok: true, mensaje: "No hubo cambios." };
+
+  if (MODO_DEMO) {
+    almacenDemo().overrides[p.data.usuarioId] = structuredClone(nuevos);
+  } else {
+    const admin = createAdminClient();
+    const { error: errorBorrar } = await admin
+      .from("usuario_permisos")
+      .delete()
+      .eq("usuario_id", p.data.usuarioId);
+    if (errorBorrar)
+      return { ok: false, error: mensajeError(errorBorrar.code, errorBorrar.message) };
+    if (nuevos.length) {
+      const { error: errorInsertar } = await admin
+        .from("usuario_permisos")
+        .insert(
+          nuevos.map((o) => ({
+            usuario_id: p.data.usuarioId,
+            modulo_clave: o.modulo,
+            tipo: o.tipo,
+          })),
+        );
+      if (errorInsertar)
+        return {
+          ok: false,
+          error: mensajeError(errorInsertar.code, errorInsertar.message),
+        };
+    }
+  }
+
+  const antesOtorgar = previos.filter((o) => o.tipo === "otorgar").map((o) => o.modulo);
+  const antesRevocar = previos.filter((o) => o.tipo === "revocar").map((o) => o.modulo);
+  const hoyOtorgar = nuevos.filter((o) => o.tipo === "otorgar").map((o) => o.modulo);
+  const hoyRevocar = nuevos.filter((o) => o.tipo === "revocar").map((o) => o.modulo);
+  const otorgadosNuevos = hoyOtorgar.filter((c) => !antesOtorgar.includes(c));
+  const otorgadosQuitados = antesOtorgar.filter((c) => !hoyOtorgar.includes(c));
+  const revocadosNuevos = hoyRevocar.filter((c) => !antesRevocar.includes(c));
+  const revocadosQuitados = antesRevocar.filter((c) => !hoyRevocar.includes(c));
+
+  await registrarAuditoria({
+    actorId: yo.id,
+    actorEmail: yo.email,
+    modulo: MODULO,
+    accion: "usuario.accesos",
+    entidad: "usuario",
+    entidadId: actual.email,
+    detalle: {
+      ...(otorgadosNuevos.length && { otorgados: otorgadosNuevos }),
+      ...(revocadosNuevos.length && { revocados: revocadosNuevos }),
+      ...(otorgadosQuitados.length && { otorgados_removidos: otorgadosQuitados }),
+      ...(revocadosQuitados.length && { revocados_removidos: revocadosQuitados }),
+    },
+  });
+  revalidatePath("/configuracion/usuarios");
+  return {
+    ok: true,
+    mensaje: `Se actualizaron los accesos de ${actual.nombre ?? actual.email}.`,
   };
 }

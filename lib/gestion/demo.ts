@@ -1,5 +1,5 @@
 import "server-only";
-import type { LogFila, RolFila, UsuarioFila } from "./tipos";
+import type { LogFila, OverridePermiso, RolFila, UsuarioFila } from "./tipos";
 
 /**
  * Datos en memoria para el MODO DEMOSTRACIÓN (sin Supabase). Se pierden al
@@ -10,6 +10,8 @@ import type { LogFila, RolFila, UsuarioFila } from "./tipos";
 interface AlmacenDemo {
   roles: RolFila[];
   usuarios: UsuarioFila[];
+  /** Overrides individuales por usuario (clave: usuarioId). */
+  overrides: Record<string, OverridePermiso[]>;
   logs: LogFila[];
   siguienteLog: number;
 }
@@ -211,7 +213,7 @@ function crear(): AlmacenDemo {
     }
   }
   logs.reverse();
-  return { roles, usuarios, logs, siguienteLog: id };
+  return { roles, usuarios, overrides: {}, logs, siguienteLog: id };
 }
 
 const g = globalThis as unknown as { __portalDemo?: AlmacenDemo };

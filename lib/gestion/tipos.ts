@@ -22,6 +22,15 @@ export interface UsuarioFila {
   creado: string;
 }
 
+/**
+ * Override individual: añade (`otorgar`) o quita (`revocar`) acceso a un
+ * módulo HOJA sobre el rol base del usuario.
+ */
+export interface OverridePermiso {
+  modulo: string;
+  tipo: "otorgar" | "revocar";
+}
+
 export interface LogFila {
   id: number;
   fecha: string;

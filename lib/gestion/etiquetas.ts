@@ -18,6 +18,7 @@ export const ACCIONES_AUDITORIA: Record<string, string> = {
   "usuario.editar": "Editó un usuario",
   "usuario.activar": "Activó un usuario",
   "usuario.inactivar": "Inactivó un usuario",
+  "usuario.accesos": "Cambió los accesos individuales de un usuario",
   "auditoria.exportar": "Exportó logs",
   "anticipo.migrar": "Migró un anticipo a SAP",
   "ficha.consultar": "Consultó una ficha técnica",

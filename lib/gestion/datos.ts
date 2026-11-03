@@ -4,7 +4,13 @@ import { MODO_DEMO } from "@/lib/demo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { almacenDemo } from "./demo";
-import type { FiltrosLogs, LogFila, RolFila, UsuarioFila } from "./tipos";
+import type {
+  FiltrosLogs,
+  LogFila,
+  OverridePermiso,
+  RolFila,
+  UsuarioFila,
+} from "./tipos";
 
 /*
  * Lecturas de Configuración y Auditoría. Llamar SOLO después de
@@ -47,6 +53,44 @@ export async function obtenerRol(id: string): Promise<RolFila | null> {
   const roles = await listarRoles();
   return roles.find((r) => r.id === id) ?? null;
 }
+
+/** Overrides individuales de UN usuario (vacío si no tiene). */
+export async function overridesDelUsuario(
+  usuarioId: string,
+): Promise<OverridePermiso[]> {
+  if (MODO_DEMO) {
+    return structuredClone(almacenDemo().overrides[usuarioId] ?? []);
+  }
+  const { data, error } = await createAdminClient()
+    .from("usuario_permisos")
+    .select("modulo_clave, tipo")
+    .eq("usuario_id", usuarioId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    modulo: r.modulo_clave,
+    tipo: r.tipo as OverridePermiso["tipo"],
+  }));
+}
+
+/** Overrides de TODOS los usuarios, indexados por usuarioId (vacío si ninguno). */
+export const listarOverrides = cache(
+  async (): Promise<Record<string, OverridePermiso[]>> => {
+    if (MODO_DEMO) return structuredClone(almacenDemo().overrides);
+
+    const { data, error } = await createAdminClient()
+      .from("usuario_permisos")
+      .select("usuario_id, modulo_clave, tipo");
+    if (error) throw new Error(error.message);
+    const mapa: Record<string, OverridePermiso[]> = {};
+    for (const r of data ?? []) {
+      (mapa[r.usuario_id] ??= []).push({
+        modulo: r.modulo_clave,
+        tipo: r.tipo as OverridePermiso["tipo"],
+      });
+    }
+    return mapa;
+  },
+);
 
 export const listarUsuarios = cache(async (): Promise<UsuarioFila[]> => {
   if (MODO_DEMO) return structuredClone(almacenDemo().usuarios);

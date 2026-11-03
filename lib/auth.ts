@@ -40,7 +40,7 @@ export const getUsuarioActual = cache(
     const { data: perfil } = await supabase
       .from("perfiles")
       .select(
-        "id, email, nombre_completo, activo, roles ( id, nombre, es_superadmin, activo, rol_permisos ( modulo_clave ) )",
+        "id, email, nombre_completo, activo, roles ( id, nombre, es_superadmin, activo, rol_permisos ( modulo_clave ) ), usuario_permisos ( modulo_clave, tipo )",
       )
       .eq("id", userId)
       .single();
@@ -55,12 +55,32 @@ export const getUsuarioActual = cache(
 
     if (!perfil?.activo || !rol?.activo) return null;
 
+    // Permiso efectivo = (rol) ∪ (otorgado al usuario) ∖ (revocado al usuario)
+    const overrides =
+      (perfil as unknown as {
+        usuario_permisos: { modulo_clave: string; tipo: string }[] | null;
+      }).usuario_permisos ?? [];
+    const revocados = new Set(
+      overrides.filter((o) => o.tipo === "revocar").map((o) => o.modulo_clave),
+    );
+    const otorgados = overrides
+      .filter((o) => o.tipo === "otorgar")
+      .map((o) => o.modulo_clave);
+    const accesos = Array.from(
+      new Set([
+        ...rol.rol_permisos
+          .map((p) => p.modulo_clave)
+          .filter((c) => !revocados.has(c)),
+        ...otorgados,
+      ]),
+    );
+
     return {
       id: perfil.id,
       email: perfil.email,
       nombre: perfil.nombre_completo,
       rol: { id: rol.id, nombre: rol.nombre, esSuperadmin: rol.es_superadmin },
-      accesos: rol.rol_permisos.map((p) => p.modulo_clave),
+      accesos,
     };
   },
 );
