@@ -120,7 +120,8 @@ export async function crearUsuario(entrada: {
     });
   } else {
     // El trigger on_auth_user_created crea el perfil con este nombre y rol
-    const { data, error } = await createAdminClient().auth.admin.createUser({
+    const admin = createAdminClient();
+    const { data, error } = await admin.auth.admin.createUser({
       email: p.data.email,
       password: p.data.clave,
       email_confirm: true,
@@ -133,6 +134,19 @@ export async function crearUsuario(entrada: {
         error: mensajeError(error?.code, error?.message ?? ""),
       };
     id = data.user.id;
+    // Supabase Auth puede fijar app_metadata DESPUÉS del INSERT en auth.users,
+    // así que el trigger a veces ve rol_id nulo. Lo forzamos aquí.
+    const { error: errorPerfil } = await admin
+      .from("perfiles")
+      .update({ nombre_completo: p.data.nombre, rol_id: rol.id })
+      .eq("id", id);
+    if (errorPerfil) {
+      console.error("[usuarios] no se fijó el rol al crear:", errorPerfil.message);
+      return {
+        ok: false,
+        error: "La cuenta se creó pero no se pudo asignar el rol. Edítala para asignarlo.",
+      };
+    }
   }
 
   await registrarAuditoria({
