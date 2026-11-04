@@ -52,44 +52,38 @@ export async function CreditosTusDatos() {
     porcentaje < 10 ? "rojo" : porcentaje < 30 ? "ambar" : "verde";
 
   return (
-    <div className="bg-card flex items-center gap-3 self-start rounded-full border px-3 py-1.5 text-xs sm:gap-4 sm:px-4">
-      <span className="text-muted-foreground font-medium">Créditos</span>
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex items-baseline gap-1">
-          <span
-            className={cx("text-sm font-semibold tabular-nums", TEXTO[tono])}
-          >
-            {amount.toLocaleString("es-CO")}
+    <div
+      className="bg-card inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]"
+      title={`${amount.toLocaleString("es-CO")} de ${total.toLocaleString("es-CO")} créditos (${Math.round(porcentaje)}%)`}
+    >
+      <span className="text-muted-foreground">Créditos</span>
+      <span className="tabular-nums">
+        <span className={cx("font-semibold", TEXTO[tono])}>
+          {amount.toLocaleString("es-CO")}
+        </span>
+        {totalComprado !== null && (
+          <span className="text-muted-foreground">
+            {" / "}
+            {totalComprado.toLocaleString("es-CO")}
           </span>
-          {totalComprado !== null && (
-            <span className="text-muted-foreground tabular-nums">
-              / {totalComprado.toLocaleString("es-CO")}
-            </span>
-          )}
-        </span>
+        )}
+      </span>
+      <div
+        className="bg-muted relative h-1 w-12 overflow-hidden rounded-full"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(porcentaje)}
+        aria-label={`${amount} créditos TusDatos restantes de ${total}`}
+      >
         <div
-          className="bg-muted relative h-1.5 w-20 overflow-hidden rounded-full sm:w-28"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(porcentaje)}
-          aria-label={`${amount} créditos TusDatos restantes de ${total}`}
-          title={`${Math.round(porcentaje)}% restante`}
-        >
-          <div
-            className={cx("h-full rounded-full transition-all", BARRA[tono])}
-            style={{ width: `${porcentaje}%` }}
-          />
-        </div>
-        <span
-          className={cx(
-            "hidden tabular-nums sm:inline",
-            porcentaje < 30 ? TEXTO[tono] : "text-muted-foreground",
-          )}
-        >
-          {Math.round(porcentaje)}%
-        </span>
+          className={cx("h-full rounded-full transition-all", BARRA[tono])}
+          style={{ width: `${porcentaje}%` }}
+        />
       </div>
+      <span className={cx("tabular-nums font-medium", TEXTO[tono])}>
+        {Math.round(porcentaje)}%
+      </span>
     </div>
   );
 }
@@ -97,10 +91,11 @@ export async function CreditosTusDatos() {
 /** Esqueleto mientras se consulta TusDatos. */
 export function CreditosTusDatosCargando() {
   return (
-    <div className="bg-card flex items-center gap-3 self-start rounded-full border px-3 py-1.5 text-xs">
-      <span className="text-muted-foreground font-medium">Créditos</span>
-      <span className="bg-muted inline-block h-3 w-14 animate-pulse rounded" />
-      <span className="bg-muted inline-block h-1.5 w-20 animate-pulse rounded-full sm:w-28" />
+    <div className="bg-card inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]">
+      <span className="text-muted-foreground">Créditos</span>
+      <span className="bg-muted inline-block h-3 w-16 animate-pulse rounded" />
+      <span className="bg-muted inline-block h-1 w-12 animate-pulse rounded-full" />
+      <span className="bg-muted inline-block h-3 w-6 animate-pulse rounded" />
     </div>
   );
 }
@@ -136,13 +131,15 @@ function Chip({
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 self-start rounded-full border px-3 py-1.5 text-xs font-medium",
+        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium",
         clases,
       )}
+      title={`${label} · ${valor}`}
     >
       {icono}
-      <span className="text-foreground/70">{label}</span>
-      <span>· {valor}</span>
+      <span>
+        {label} · {valor}
+      </span>
     </span>
   );
 }

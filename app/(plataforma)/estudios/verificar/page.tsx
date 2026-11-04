@@ -20,10 +20,11 @@ export default async function VerificarEstudiosPage() {
         icono="verificar"
         titulo="Verificar estudios"
         descripcion="Pendientes de decisión, ordenados por nivel de riesgo. Entra al detalle para aprobar o rechazar."
-      />
-      <Suspense fallback={<CreditosTusDatosCargando />}>
-        <CreditosTusDatos />
-      </Suspense>
+      >
+        <Suspense fallback={<CreditosTusDatosCargando />}>
+          <CreditosTusDatos />
+        </Suspense>
+      </Encabezado>
       <BandejaVerificar items={pendientes} />
     </div>
   );

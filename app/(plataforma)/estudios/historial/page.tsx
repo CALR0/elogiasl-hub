@@ -20,10 +20,11 @@ export default async function HistorialPage() {
         icono="historial"
         titulo="Historial de estudios"
         descripcion="Estudios decididos: quién, cuándo, decisión y comentario."
-      />
-      <Suspense fallback={<CreditosTusDatosCargando />}>
-        <CreditosTusDatos />
-      </Suspense>
+      >
+        <Suspense fallback={<CreditosTusDatosCargando />}>
+          <CreditosTusDatos />
+        </Suspense>
+      </Encabezado>
       <ListaHistorial items={items} />
     </div>
   );
