@@ -21,21 +21,19 @@ export async function CreditosTusDatos() {
   }
 
   let amount: number | null = null;
+  let totalComprado: number | null = null;
   try {
-    const plan = (await cliente.creditos()) as unknown as Record<
-      string,
-      unknown
-    >;
-    // TusDatos devuelve { amount, purchase_amount, ... } (ver PlansOut en el
-    // OpenAPI). Si la respuesta cambió o viene envuelta, buscamos variantes.
-    const posible =
-      (plan.amount as number | undefined) ??
-      (plan.consultas_restantes as number | undefined) ??
-      ((plan.data as Record<string, unknown> | undefined)?.amount as
-        | number
-        | undefined);
+    // TusDatos devuelve un array con los planes del usuario:
+    //   [{ amount, purchase_amount, user, ... }]
+    const respuesta = (await cliente.creditos()) as unknown;
+    const planes = Array.isArray(respuesta) ? respuesta : [respuesta];
+    const plan = planes[0] as Record<string, unknown> | undefined;
+    const posible = plan?.amount;
     if (typeof posible === "number") amount = posible;
-    else console.error("[tusdatos.creditos] respuesta inesperada:", plan);
+    if (typeof plan?.purchase_amount === "number")
+      totalComprado = plan.purchase_amount;
+    if (amount === null)
+      console.error("[tusdatos.creditos] respuesta inesperada:", respuesta);
   } catch (e) {
     console.error("[tusdatos.creditos]", e);
   }
@@ -69,9 +67,11 @@ export async function CreditosTusDatos() {
         </>
       }
       descripcion={
-        bajo
-          ? "Quedan pocos créditos. Avisa al administrador de TusDatos."
-          : "Créditos disponibles para consultar antecedentes."
+        totalComprado
+          ? `${bajo ? "Quedan pocos créditos. " : ""}De ${totalComprado.toLocaleString("es-CO")} comprados.`
+          : bajo
+            ? "Quedan pocos créditos. Avisa al administrador de TusDatos."
+            : "Créditos disponibles para consultar antecedentes."
       }
     />
   );

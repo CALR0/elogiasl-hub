@@ -146,8 +146,20 @@ export function clienteTusDatos({
     estado(jobid: string): Promise<EstadoConsulta> {
       return pedir(`/api/results/${encodeURIComponent(jobid)}`);
     },
-    /** Créditos restantes. */
-    creditos(): Promise<{ amount: number }> {
+    /**
+     * Créditos del usuario. TusDatos devuelve un ARRAY con los planes:
+     *   [{ amount, purchase_amount, user, ... }]
+     * (en la práctica un solo elemento por cuenta).
+     */
+    creditos(): Promise<
+      Array<{
+        amount: number;
+        purchase_amount: number;
+        user: string;
+        price_per_check?: number;
+        demo?: boolean;
+      }>
+    > {
       return pedir("/api/plans");
     },
   };
