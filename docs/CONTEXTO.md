@@ -1,7 +1,7 @@
 # soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
 > Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
-> Última actualización: 2026-11-04.
+> Última actualización: 2026-11-05.
 > Resumen para usuarios: [README.md](../README.md).
 
 ## 1. Qué es
@@ -13,7 +13,7 @@ herramientas que vivían como aplicaciones separadas:
 |---|---|---|
 | [sma-elogia](https://github.com/CALR0/sma-elogia) | Migración de anticipos a SAP (Silogtran → AWS) | Financiero › Transferencia › **Migración anticipo SAP** ✅ |
 | [fvec-elogia](https://github.com/CALR0/fvec-elogia) | Fichas PDF de vehículo/conductor desde Silogtran | Maestros › Vehículo › **Generar ficha técnica** ✅ |
-| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (fase posterior) |
+| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (migrado 2026-11-05) |
 
 ## 2. Stack (alineado con elogix-app)
 
@@ -238,7 +238,7 @@ confirmación en pantalla) por cada manifiesto, en un paso:
 - Migración `20261104000000_trafico_monitoreo.sql`: inserta los nodos `despacho.trafico` y
   `despacho.trafico.monitoreo-vehiculo`.
 
-## 6. Estudios (migrado de elogix-app, fase 1)
+## 6. Estudios (migrado de elogix-app)
 
 - **Solicitar estudios** — formularios de documento (CC, CE, PPT, PP, NIT) y vehículo (placa +
   propietario), con autorización Habeas Data obligatoria. Permiso `estudios.solicitar`.
@@ -277,13 +277,25 @@ Portado del diseño de elogix-app:
 - **Resultado** — card centrado con referencia SOL-XXXXXX al enviar bien, o card de error con
   "Intentar de nuevo" conservando los datos.
 
-### 6.4 Archivos clave
+### 6.4 Créditos TusDatos
+`components/estudios/creditos-tusdatos.tsx` consulta `GET /api/plans` (devuelve un array con
+el plan: `[{ amount, purchase_amount, user, ... }]`) y muestra un chip compacto en la esquina
+derecha del Encabezado de Verificar e Historial: "Créditos 442 / 10.041 [▭] 4%", con barrita
+verde / ámbar (<30%) / rojo (<10%). Sin credenciales → chip ámbar "Modo simulado"; API caída →
+chip rojo "TusDatos no responde". Render en servidor dentro de `<Suspense>`.
+
+### 6.5 Mis solicitudes · filtrado explícito
+`listarMisSolicitudes` filtra por `created_by = auth.uid()` **además** de la RLS, porque la
+política "verificador lee todas" también se aplica a quien tiene `estudios.verificar` y haría
+que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
+
+### 6.6 Archivos clave
 - Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`.
 - Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,procesar,datos}.ts`.
 - Rutas: `app/(plataforma)/estudios/{solicitar/{documento,vehiculo},mis-solicitudes,verificar/
   [numero],historial}/`.
-- UI reusable: `components/estudios/{placa-input,pastilla-nivel,resultado-envio}.tsx` y
-  `OpcionesPastilla`/`Autorizacion` en `components/ui/field.tsx`.
+- UI reusable: `components/estudios/{placa-input,pastilla-nivel,resultado-envio,creditos-tusdatos}.tsx`
+  y `OpcionesPastilla`/`Autorizacion` en `components/ui/field.tsx`.
 - Auditoría: `estudio.solicitar`, `estudio.aprobar`, `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
 
 ## 7. Puesta en marcha
@@ -313,7 +325,7 @@ Portado del diseño de elogix-app:
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-05) y siguientes pasos
+## 8. Estado actual (2026-11-05 · estudios v2) y siguientes pasos
 
 **Funcionando en local contra el Supabase real** (migraciones aplicadas, primer administrador creado):
 
@@ -336,8 +348,19 @@ Portado del diseño de elogix-app:
   reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
 - ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
 - Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
-- 🟢 Estudios completos (Solicitar con dos formularios fieles a elogix + Mis solicitudes + Verificar
-  + Historial), con integración TusDatos real cuando las credenciales están en el entorno y
-  fallback a simulador. Consulta vehicular con remolque opcional.
-- ⏭️ Siguiente: webhook de TusDatos para consultas asíncronas largas y exportación del historial.
+- 🟢 Estudios completos (Solicitar con dos formularios fieles a elogix + Mis solicitudes +
+  Verificar + Historial), con integración TusDatos real cuando las credenciales están en el
+  entorno y fallback automático a simulador. Consulta vehicular con remolque opcional. Chip de
+  créditos en la esquina derecha del encabezado, "Mis solicitudes" filtrado por usuario.
+- ⏭️ Pendiente antes de producción en Vercel:
+  - Aplicar en Supabase, en orden, las migraciones `20261105000000_estudios.sql` y
+    `20261105010000_estudios_remolque.sql`.
+  - Poner `TUSDATOS_USUARIO` y `TUSDATOS_CLAVE` en `.env.local` y en Vercel. Opcional
+    `TUSDATOS_BASE_URL` (default `https://dash-board.tusdatos.co`).
+  - En Configuración › Roles marcar `estudios.solicitar` + `estudios.mis-solicitudes` a los
+    solicitantes y `estudios.verificar` + `estudios.historial` al Analista PSF (u otro rol que
+    designen).
+- ⏭️ Siguientes fases: webhook de TusDatos para consultas asíncronas largas (sobrepasar los 60 s
+  de timeout de Vercel Pro), exportación del historial a Excel/CSV, reporte HTML/PDF de TusDatos
+  por Route Handler con verificación de permiso.
 - ⏭️ Módulos en construcción: Factura.
