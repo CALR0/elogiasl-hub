@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  CarFront,
   ClipboardCheck,
   CloudUpload,
   Database,
@@ -11,6 +12,8 @@ import {
   KeyRound,
   Landmark,
   ListChecks,
+  MapPinned,
+  Radar,
   Receipt,
   ScrollText,
   Search,
@@ -19,7 +22,6 @@ import {
   ShieldCheck,
   Truck,
   Users,
-  CarFront,
   type LucideIcon,
 } from "lucide-react";
 import type { IconoModulo as Nombre } from "@/lib/modulos";
@@ -34,6 +36,8 @@ const ICONOS: Record<Nombre, LucideIcon> = {
   cumplido: FileCheck,
   expedir: Send,
   subir: CloudUpload,
+  trafico: Radar,
+  monitoreo: MapPinned,
   financiero: Landmark,
   factura: Receipt,
   transferencia: ArrowLeftRight,

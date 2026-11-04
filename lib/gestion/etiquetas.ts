@@ -27,6 +27,7 @@ export const ACCIONES_AUDITORIA: Record<string, string> = {
   "sicetac.calcular": "Calculó el SICETAC de un manifiesto",
   "manifiesto.expedir": "Expidió un manifiesto ante el Ministerio",
   "cumplido.migrar": "Migró un cumplido al RNDC",
+  "trafico.consultar": "Consultó un vehículo o viaje en Control T",
 };
 
 export const etiquetaAccion = (codigo: string) =>

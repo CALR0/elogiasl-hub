@@ -1,7 +1,7 @@
 # soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
 > Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
-> Última actualización: 2026-10-31.
+> Última actualización: 2026-11-04.
 > Resumen para usuarios: [README.md](../README.md).
 
 ## 1. Qué es
@@ -31,6 +31,7 @@ tabla `public.modulos`. La ruta sale de la clave: `financiero.transferencia.migr
 ```
 Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (disponible)
                 › Cumplido manifiesto › Migración cumplido RNDC           (disponible)
+                › Tráfico › Monitoreo vehículo                            (disponible ← TVIEWER)
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
@@ -209,6 +210,26 @@ confirmación en pantalla) por cada manifiesto, en un paso:
 - Migración `20261102010000_migracion_cumplido_rndc.sql`: Cumplido manifiesto pasa a submódulo y sus
   accesos pasan a la funcionalidad nueva.
 - Acceso al RNDC común a los dos módulos: `accesoRndc()` en `lib/sicetac/rndc.ts`.
+
+## 5.4 Monitoreo vehículo (Despacho › Tráfico) · migrado de TVIEWER
+
+- Consulta la ubicación y el viaje activo en **Control T** por **placa** (una o varias) o por
+  **manifiesto / orden**. API Public (`/apipublic/*`) para login JSON y `Resume`; API Web
+  (`/APP/ApiWeb/CurrentLocation`, multipart) para la ubicación en tiempo real. Ambos usan el mismo
+  Bearer que entrega `POST /apipublic/api/login/oauth` con `{username, password}`.
+- `lib/controlt/cliente.ts` — login + normalización de `Resume`, `CurrentLocation` y
+  `Travel/search`. 401 en Resume marca token inválido; 500/404 = sin resultados (no error).
+  **Fallback automático**: si Resume no devuelve nada para una placa, intenta `Travel/search` para
+  traer los viajes **programados** (estado `"Programado"`, sin posición, con la fecha de salida
+  anotada en observaciones). Portado de `tviewer/controlt-mapa`.
+- `lib/controlt/sesion-servicio.ts` — cuenta de servicio `CONTROLT_USUARIO` / `CONTROLT_CLAVE`. El
+  token Bearer vive en memoria del runtime y se reusa hasta vencer (~12 h, `expires_in` segundos);
+  un 401 fuerza relogin y reintenta una vez. El cliente nunca ve el token.
+- Página `app/(plataforma)/despacho/trafico/monitoreo-vehiculo`: server action `consultar()`
+  autoriza con `requirePermiso` y audita (`trafico.consultar`); mapa Leaflet cargado por CDN en
+  `mapa.tsx` (sin dependencia npm) y panel de resumen por vehículo con viaje asociado.
+- Migración `20261104000000_trafico_monitoreo.sql`: inserta los nodos `despacho.trafico` y
+  `despacho.trafico.monitoreo-vehiculo`.
 
 ## 6. Estudios (propuesta de organización, no se implementa aún)
 

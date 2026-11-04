@@ -25,6 +25,8 @@ export type IconoModulo =
   | "cumplido"
   | "expedir"
   | "subir"
+  | "trafico"
+  | "monitoreo"
   | "financiero"
   | "factura"
   | "transferencia"
@@ -91,6 +93,26 @@ export const MODULOS: readonly NodoModulo[] = [
               "Corrige las retenciones con el flete del RNDC y radica los cumplidos rechazados (CMA273, CMA262).",
             icono: "subir",
             estado: "disponible",
+          },
+        ],
+      },
+      {
+        clave: "despacho.trafico",
+        nombre: "Tráfico",
+        descripcion: "Seguimiento y monitoreo de la operación en ruta.",
+        icono: "trafico",
+        hijos: [
+          {
+            clave: "despacho.trafico.monitoreo-vehiculo",
+            nombre: "Monitoreo vehículo",
+            descripcion:
+              "Ubica vehículos y consulta viajes de Control T por placa o manifiesto.",
+            icono: "monitoreo",
+            estado: "disponible",
+            origen: {
+              nombre: "TVIEWER · Control T",
+              repo: "local://tviewer/controlt-mapa",
+            },
           },
         ],
       },

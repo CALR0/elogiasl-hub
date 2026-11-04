@@ -21,6 +21,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 |---|---|---|
 | **Despacho** | Manifiesto › **Expedir manifiesto SICETAC** | ✅ Funcionando |
 | | Cumplido manifiesto › **Migración cumplido RNDC** | ✅ Funcionando |
+| | Tráfico › **Monitoreo vehículo** | ✅ Funcionando |
 | **Financiero** | Factura | En construcción |
 | | Transferencia › **Migración anticipo SAP** | ✅ Funcionando |
 | **Maestros** | Vehículo › **Generar ficha técnica** | ✅ Funcionando |
@@ -45,6 +46,12 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   rechazó por las retenciones (FOPAT o retención en la fuente) o por remesas sin cumplir: cumple
   primero las remesas que el RNDC no tenga cumplidas (con el último XML del log RNDC de Silogtran),
   toma el flete pactado que tiene el RNDC, corrige las retenciones y radica el cumplido.
+- **Monitoreo vehículo** (Despacho › Tráfico) — localiza vehículos en el mapa y consulta su viaje
+  activo en Control T. Busca por una o varias **placas** (separadas por coma) o por **manifiesto u
+  orden**. Muestra la posición GPS, dirección, prestador, estado del viaje, avance, conductor con su
+  teléfono, origen, destino, cliente, transportador, comentario y observaciones. Si Control T no
+  tiene el viaje activo, cae en los viajes programados. Vista con mapa (modo mapa o satélite) y
+  panel colapsable por vehículo. *(Antes era la app TVIEWER.)*
 - **Roles** — crear, editar, activar o inactivar roles, marcando a qué partes del portal acceden.
   Nadie (salvo el administrador) puede modificar el rol al que pertenece.
 - **Usuarios** — crear cuentas, asignarles un rol, editarlas y activarlas o inactivarlas. Las
