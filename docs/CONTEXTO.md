@@ -74,6 +74,13 @@ Modelo:
   módulo, acción, resultado (`ok/error/denegado`), detalle, IP y navegador. Nadie la edita ni borra.
   Códigos actuales y sus textos: `lib/gestion/etiquetas.ts` (agrega ahí cada acción nueva).
   `requirePermiso()` registra `acceso.denegado` cuando alguien intenta entrar sin permiso.
+- **Cierre por inactividad** — `components/sesion/cierre-por-inactividad.tsx` (montado en el layout
+  de la plataforma) escucha mouse/teclado/táctil/scroll y guarda la última actividad en
+  `localStorage` (compartida entre pestañas). Un minuto antes del límite muestra un aviso con
+  "Seguir conectado"; al cumplirse, llama la server action `cerrarPorInactividad()`
+  (`sesion.inactividad` en auditoría) y redirige a `/login?motivo=inactividad`, donde el login
+  muestra el mensaje. También corta al volver a la pestaña si ya se pasó el tiempo.
+  Config: `NEXT_PUBLIC_INACTIVIDAD_MINUTOS` (1–240, por defecto 30).
 - `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
   existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
 - `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 47 pruebas de

@@ -1,8 +1,16 @@
 import { MenuLateral } from "@/components/plataforma/menu-lateral";
+import { CierrePorInactividad } from "@/components/sesion/cierre-por-inactividad";
 import { MemoriaSesion } from "@/components/sesion/memoria-sesion";
 import { Migas } from "@/components/plataforma/migas";
 import { puede, requireUsuario } from "@/lib/auth";
 import { filtrarArbol } from "@/lib/modulos";
+
+// Minutos de inactividad antes de cerrar la sesión. Puede sobreescribirse con
+// la variable NEXT_PUBLIC_INACTIVIDAD_MINUTOS (número entre 1 y 240).
+const MINUTOS_INACTIVIDAD = (() => {
+  const v = Number(process.env.NEXT_PUBLIC_INACTIVIDAD_MINUTOS);
+  return Number.isFinite(v) && v >= 1 && v <= 240 ? v : 30;
+})();
 
 /**
  * Estructura de todas las pantallas con sesión: menú de módulos (podado según
@@ -35,6 +43,8 @@ export default async function PlataformaLayout({
           <MemoriaSesion usuarioId={usuario.id}>{children}</MemoriaSesion>
         </main>
       </div>
+
+      <CierrePorInactividad minutos={MINUTOS_INACTIVIDAD} />
     </div>
   );
 }

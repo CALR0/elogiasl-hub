@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { FlaskConical } from "lucide-react";
+import { Clock, FlaskConical } from "lucide-react";
 import logo from "@/public/brand/elogia-logo.svg";
 import { APP } from "@/lib/config";
 import { MODO_DEMO } from "@/lib/demo";
@@ -11,9 +11,13 @@ export const metadata: Metadata = { title: "Iniciar sesión" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; motivo?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, motivo } = await searchParams;
+  const mensajeMotivo =
+    motivo === "inactividad"
+      ? "Tu sesión se cerró por inactividad. Vuelve a iniciar sesión."
+      : null;
 
   return (
     <main className="lg:bg-brand-deep relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10 sm:px-8 lg:px-16 xl:px-24">
@@ -45,6 +49,13 @@ export default async function LoginPage({
               <FlaskConical className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               Modo demostración: Supabase aún no está configurado. Entra sin
               credenciales con acceso total para recorrer la interfaz.
+            </p>
+          )}
+
+          {mensajeMotivo && (
+            <p className="bg-construccion-bg text-construccion mb-5 flex items-start gap-2 rounded-lg px-3 py-2 text-xs leading-relaxed">
+              <Clock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {mensajeMotivo}
             </p>
           )}
 

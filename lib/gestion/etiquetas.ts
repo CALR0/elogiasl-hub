@@ -7,6 +7,7 @@ import { buscarPorSegmentos, MODULOS } from "@/lib/modulos";
 export const ACCIONES_AUDITORIA: Record<string, string> = {
   "sesion.iniciar": "Inició sesión",
   "sesion.cerrar": "Cerró sesión",
+  "sesion.inactividad": "Sesión cerrada por inactividad",
   "sesion.fallida": "Inicio de sesión fallido",
   "sesion.denegada": "Inicio de sesión denegado",
   "acceso.denegado": "Acceso denegado",

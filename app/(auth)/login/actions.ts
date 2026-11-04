@@ -119,3 +119,23 @@ export async function cerrarSesion() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+/**
+ * Cierra la sesión cuando el navegador detecta mucho tiempo sin actividad.
+ * Lo llama el componente CierrePorInactividad del layout de la plataforma.
+ */
+export async function cerrarPorInactividad() {
+  if (MODO_DEMO) redirect("/login?motivo=inactividad");
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  if (data?.claims?.sub) {
+    await registrarAuditoria({
+      actorId: data.claims.sub,
+      actorEmail: (data.claims.email as string | undefined) ?? null,
+      modulo: "sesion",
+      accion: "sesion.inactividad",
+    });
+  }
+  await supabase.auth.signOut();
+  redirect("/login?motivo=inactividad");
+}
