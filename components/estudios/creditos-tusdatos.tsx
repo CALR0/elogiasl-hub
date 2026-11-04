@@ -22,17 +22,30 @@ export async function CreditosTusDatos() {
 
   let amount: number | null = null;
   try {
-    amount = (await cliente.creditos()).amount;
+    const plan = (await cliente.creditos()) as unknown as Record<
+      string,
+      unknown
+    >;
+    // TusDatos devuelve { amount, purchase_amount, ... } (ver PlansOut en el
+    // OpenAPI). Si la respuesta cambió o viene envuelta, buscamos variantes.
+    const posible =
+      (plan.amount as number | undefined) ??
+      (plan.consultas_restantes as number | undefined) ??
+      ((plan.data as Record<string, unknown> | undefined)?.amount as
+        | number
+        | undefined);
+    if (typeof posible === "number") amount = posible;
+    else console.error("[tusdatos.creditos] respuesta inesperada:", plan);
   } catch (e) {
     console.error("[tusdatos.creditos]", e);
   }
-  if (amount === null) {
+  if (typeof amount !== "number") {
     return (
       <Tarjeta
         tono="rojo"
         icono={<AlertTriangle className="size-5" aria-hidden />}
         titulo="TusDatos no responde"
-        descripcion="No se pudo consultar los créditos. Intenta de nuevo más tarde."
+        descripcion="No se pudo consultar los créditos. Revisa las credenciales o intenta más tarde."
       />
     );
   }
