@@ -79,10 +79,13 @@ export interface TusDatosConfig {
   timeoutMs?: number;
 }
 
+/** Base oficial del API de TusDatos (ver docs.tusdatos.co). */
+export const TUSDATOS_BASE_URL_DEFAULT = "https://dash-board.tusdatos.co";
+
 export function clienteTusDatos({
   usuario,
   clave,
-  baseUrl = "https://api.tusdatos.co",
+  baseUrl = TUSDATOS_BASE_URL_DEFAULT,
   timeoutMs = 30_000,
 }: TusDatosConfig) {
   const auth =
@@ -163,6 +166,7 @@ export function obtenerClienteTusDatos(): ClienteTusDatos | null {
   return clienteTusDatos({
     usuario: process.env.TUSDATOS_USUARIO!,
     clave: process.env.TUSDATOS_CLAVE!,
+    baseUrl: process.env.TUSDATOS_BASE_URL || TUSDATOS_BASE_URL_DEFAULT,
   });
 }
 
