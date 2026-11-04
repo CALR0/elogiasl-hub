@@ -5,13 +5,10 @@ import { Encabezado } from "@/components/plataforma/encabezado";
 import { ButtonLink } from "@/components/ui/button";
 import { requirePermiso } from "@/lib/auth";
 import { listarRoles } from "@/lib/gestion/datos";
-import { hojas } from "@/lib/modulos";
 import { cx } from "@/lib/utils";
 import { BotonEstadoRol } from "./boton-estado-rol";
 
 export const metadata: Metadata = { title: "Roles" };
-
-const TOTAL_FUNCIONES = hojas().length;
 
 export default async function RolesPage() {
   const yo = await requirePermiso("configuracion.roles");
@@ -32,7 +29,6 @@ export default async function RolesPage() {
 
       <ul className="bg-card divide-y overflow-hidden rounded-xl border">
         {roles.map((r) => {
-          const funciones = r.esSuperadmin ? TOTAL_FUNCIONES : r.accesos.length;
           return (
             <li
               key={r.id}
@@ -70,7 +66,7 @@ export default async function RolesPage() {
 
               <dl className="text-muted-foreground flex shrink-0 gap-6 text-sm">
                 <div
-                  className="flex w-28 items-center gap-1.5"
+                  className="flex items-center gap-1.5"
                   title="Usuarios con este rol"
                 >
                   <Users className="size-4" aria-hidden />
@@ -78,23 +74,6 @@ export default async function RolesPage() {
                   <dd className="tabular-nums">
                     {r.usuarios} {r.usuarios === 1 ? "usuario" : "usuarios"}
                   </dd>
-                </div>
-                <div className="w-36">
-                  <dt className="sr-only">Accesos</dt>
-                  <dd className="tabular-nums">
-                    {funciones} de {TOTAL_FUNCIONES} con acceso
-                  </dd>
-                  <div
-                    className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full"
-                    aria-hidden
-                  >
-                    <div
-                      className="bg-primary h-full rounded-full"
-                      style={{
-                        width: `${(funciones / TOTAL_FUNCIONES) * 100}%`,
-                      }}
-                    />
-                  </div>
                 </div>
               </dl>
 
