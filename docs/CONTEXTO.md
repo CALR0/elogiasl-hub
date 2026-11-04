@@ -35,7 +35,8 @@ Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (d
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
-Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (en construcción ← elogix)
+Estudios        › Solicitar · Mis solicitudes                             (migracion ← elogix, fase 1 simulada)
+                › Verificar · Historial                                   (en construcción)
 Auditoría       › Visor de logs                                           (disponible)
 Configuración   › Roles · Usuarios                                        (disponible)
 ```
@@ -238,16 +239,33 @@ confirmación en pantalla) por cada manifiesto, en un paso:
 - Migración `20261104000000_trafico_monitoreo.sql`: inserta los nodos `despacho.trafico` y
   `despacho.trafico.monitoreo-vehiculo`.
 
-## 6. Estudios (propuesta de organización, no se implementa aún)
+## 6. Estudios (migrado de elogix-app, fase 1)
 
-- **Solicitar estudios** — formularios de documento y vehículo de elogix (rol que solicita).
-- **Mis solicitudes** — estado y decisión de lo que envié.
-- **Verificar estudios** — bandeja del verificador (hallazgos, reporte, aprobar/rechazar).
-- **Historial** — lo ya revisado: quién, cuándo, decisión y comentario, con filtros y exportación.
+- **Solicitar estudios** — formularios de documento (CC, CE, PPT, PP, NIT) y vehículo (placa +
+  propietario), con autorización Habeas Data obligatoria. Permiso `estudios.solicitar`.
+- **Mis solicitudes** — lista paginada de lo que envió el usuario con estado y, si ya hay, decisión
+  y comentario del verificador. **Nunca muestra fuentes ni hallazgos.** Permiso `estudios.mis-solicitudes`.
+- **Verificar estudios** (fase 2) — bandeja del verificador: hallazgos, fuentes, aprobar/rechazar.
+- **Historial** (fase 2) — lo ya revisado, con filtros y exportación.
 
-Los roles de elogix (`usuario` / `admin`) se reemplazan por permisos sobre estas hojas. La regla de
-elogix "quien solicita nunca ve hallazgos" se mantiene con RLS: los resultados solo se leen con
-permiso sobre `estudios.verificar` / `estudios.historial`.
+### 6.1 Separación por RLS
+Los roles de elogix (`usuario` / `admin`) se reemplazan por permisos sobre estas hojas. "Quien
+solicita nunca ve hallazgos" se garantiza en la BD: los resultados viven en tablas separadas
+(`estudio_resultados`, `estudio_hallazgos`, `estudio_eventos`) cuyo select solo pasa con
+`tiene_permiso('estudios.verificar')` o `tiene_permiso('estudios.historial')`. La decisión y el
+comentario del verificador se copian a `estudio_solicitudes` por trigger
+(`estudio_propagar_decision`) para que el solicitante los vea sin exponer resultados.
+
+### 6.2 Modo simulado
+Mientras no haya credenciales de TusDatos (`TUSDATOS_USUARIO`/`TUSDATOS_CLAVE`), `lib/estudios/
+simulador.ts` genera fuentes y hallazgos **deterministas** por documento/placa (misma entrada →
+mismo resultado). Las solicitudes quedan con `simulada = true` para distinguirlas luego.
+
+### 6.3 Archivos clave
+- Migración: `supabase/migrations/20261105000000_estudios.sql`.
+- Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,procesar,datos}.ts`.
+- Rutas: `app/(plataforma)/estudios/{solicitar,mis-solicitudes}/`.
+- Auditoría: `estudio.solicitar`, `estudio.aprobar`, `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
 
 ## 7. Puesta en marcha
 
@@ -276,7 +294,7 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-02) y siguientes pasos
+## 8. Estado actual (2026-11-05) y siguientes pasos
 
 **Funcionando en local contra el Supabase real** (migraciones aplicadas, primer administrador creado):
 
@@ -299,4 +317,6 @@ permiso sobre `estudios.verificar` / `estudios.historial`.
   reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
 - ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
 - Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
-- ⏭️ Módulos en construcción: Factura, Estudios (propuesta en §6).
+- 🟡 Estudios fase 1 (Solicitar + Mis solicitudes) migrado de elogix-app en modo simulado.
+- ⏭️ Estudios fase 2: Verificar + Historial + integración TusDatos real (ver §6).
+- ⏭️ Módulos en construcción: Factura.
