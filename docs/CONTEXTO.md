@@ -259,15 +259,31 @@ solicita nunca ve hallazgos" se garantiza en la BD: los resultados viven en tabl
 comentario del verificador se copian a `estudio_solicitudes` por trigger
 (`estudio_propagar_decision`) para que el solicitante los vea sin exponer resultados.
 
-### 6.2 Modo simulado
-Mientras no haya credenciales de TusDatos (`TUSDATOS_USUARIO`/`TUSDATOS_CLAVE`), `lib/estudios/
-simulador.ts` genera fuentes y hallazgos **deterministas** por documento/placa (misma entrada →
-mismo resultado). Las solicitudes quedan con `simulada = true` para distinguirlas luego.
+### 6.2 TusDatos (real) y modo simulado
+Con `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` configuradas (`lib/estudios/tusdatos.ts`), cada solicitud
+hace `POST /api/launch` (o `/api/launch/car` para placas), espera hasta ~90 s el `GET /api/results/
+{jobid}` y guarda fuentes/hallazgos/nivel. Sin credenciales, `lib/estudios/simulador.ts` genera
+fuentes y hallazgos **deterministas** por documento/placa (misma entrada → mismo resultado). Las
+solicitudes quedan con `simulada = true/false` para distinguirlas. La consulta vehicular combinada
+soporta remolque opcional con su propia placa y propietario (fielmente portado de elogix-app).
 
-### 6.3 Archivos clave
-- Migración: `supabase/migrations/20261105000000_estudios.sql`.
-- Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,procesar,datos}.ts`.
-- Rutas: `app/(plataforma)/estudios/{solicitar,mis-solicitudes}/`.
+### 6.3 Diseño de "Solicitar"
+Portado del diseño de elogix-app:
+- **Landing** `/estudios/solicitar` — dos tarjetas (documento / vehículo).
+- **Documento** — `OpcionesPastilla` para el tipo (CC/CE/PPT/PP/NIT), fecha solo en CE/PPT, nombre
+  solo en PP, autorización Habeas Data en su propio card.
+- **Vehículo** — campo `PlacaInput` con estilo de placa colombiana amarilla, `OpcionesPastilla` para
+  el tipo de propietario, toggle para "lleva remolque" con su propia placa R/S y propietario.
+- **Resultado** — card centrado con referencia SOL-XXXXXX al enviar bien, o card de error con
+  "Intentar de nuevo" conservando los datos.
+
+### 6.4 Archivos clave
+- Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`.
+- Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,procesar,datos}.ts`.
+- Rutas: `app/(plataforma)/estudios/{solicitar/{documento,vehiculo},mis-solicitudes,verificar/
+  [numero],historial}/`.
+- UI reusable: `components/estudios/{placa-input,pastilla-nivel,resultado-envio}.tsx` y
+  `OpcionesPastilla`/`Autorizacion` en `components/ui/field.tsx`.
 - Auditoría: `estudio.solicitar`, `estudio.aprobar`, `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
 
 ## 7. Puesta en marcha
@@ -320,6 +336,8 @@ mismo resultado). Las solicitudes quedan con `simulada = true` para distinguirla
   reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
 - ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
 - Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
-- 🟡 Estudios (Solicitar + Mis solicitudes + Verificar + Historial) migrado de elogix-app en modo simulado.
-- ⏭️ Estudios fase 3: integración TusDatos real (reemplazar simulador por API) y exportación del historial.
+- 🟢 Estudios completos (Solicitar con dos formularios fieles a elogix + Mis solicitudes + Verificar
+  + Historial), con integración TusDatos real cuando las credenciales están en el entorno y
+  fallback a simulador. Consulta vehicular con remolque opcional.
+- ⏭️ Siguiente: webhook de TusDatos para consultas asíncronas largas y exportación del historial.
 - ⏭️ Módulos en construcción: Factura.

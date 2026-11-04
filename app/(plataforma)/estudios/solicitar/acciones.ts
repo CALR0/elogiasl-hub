@@ -20,10 +20,12 @@ export type Resultado<T extends Record<string, unknown> = Record<string, never>>
   | { ok: true; datos: T }
   | { ok: false; error: string; campos?: Record<string, string> };
 
+type DatosSalida = { numero: number; id: string; simulada: boolean };
+
 /** Solicita un estudio de documento (persona o empresa). */
 export async function solicitarDocumento(
   entrada: unknown,
-): Promise<Resultado<{ numero: number; id: string }>> {
+): Promise<Resultado<DatosSalida>> {
   const usuario = await requirePermiso(MODULO);
   const parse = consultaDocumentoSchema.safeParse(entrada);
   if (!parse.success) {
@@ -46,9 +48,14 @@ export async function solicitarDocumento(
       entidad: "estudio",
       entidadId: String(salida.numero),
       resultado: "ok",
-      detalle: { tipo: parse.data.tipo, modulo: "documento" },
+      detalle: {
+        tipo: parse.data.tipo,
+        modulo: "documento",
+        simulada: salida.simulada,
+      },
     });
     revalidatePath("/estudios/mis-solicitudes");
+    revalidatePath("/estudios/verificar");
     return { ok: true, datos: salida };
   } catch (e) {
     const mensaje =
@@ -68,7 +75,7 @@ export async function solicitarDocumento(
 /** Solicita un estudio de vehículo (placa + propietario). */
 export async function solicitarVehiculo(
   entrada: unknown,
-): Promise<Resultado<{ numero: number; id: string }>> {
+): Promise<Resultado<DatosSalida>> {
   const usuario = await requirePermiso(MODULO);
   const parse = consultaVehiculoSchema.safeParse(entrada);
   if (!parse.success) {
@@ -91,9 +98,15 @@ export async function solicitarVehiculo(
       entidad: "estudio",
       entidadId: String(salida.numero),
       resultado: "ok",
-      detalle: { placa: parse.data.placa, modulo: "vehiculo" },
+      detalle: {
+        placa: parse.data.placa,
+        modulo: "vehiculo",
+        remolque: parse.data.incluirRemolque ? parse.data.placaRemolque : null,
+        simulada: salida.simulada,
+      },
     });
     revalidatePath("/estudios/mis-solicitudes");
+    revalidatePath("/estudios/verificar");
     return { ok: true, datos: salida };
   } catch (e) {
     const mensaje =
