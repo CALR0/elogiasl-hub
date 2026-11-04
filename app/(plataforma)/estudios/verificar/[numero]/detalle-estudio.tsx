@@ -1,0 +1,303 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import {
+  AlertTriangle,
+  Check,
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+  X,
+} from "lucide-react";
+import { Aviso } from "@/components/ui/aviso";
+import { Button } from "@/components/ui/button";
+import { Dialogo } from "@/components/ui/dialogo";
+import { Field } from "@/components/ui/field";
+import { PastillaNivel } from "@/components/estudios/pastilla-nivel";
+import type { Estudio, ResultadoFuente } from "@/lib/estudios/tipos";
+import { fechaHora } from "@/lib/utils";
+import { aprobar, rechazar } from "../acciones";
+
+type Accion = "aprobar" | "rechazar";
+
+export function DetalleEstudio({
+  estudio,
+  soloLectura = false,
+}: {
+  estudio: Estudio;
+  soloLectura?: boolean;
+}) {
+  const router = useRouter();
+  const [accion, setAccion] = useState<Accion | null>(null);
+  const [comentario, setComentario] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [procesando, startTransition] = useTransition();
+
+  const decidido = estudio.decision !== "pendiente";
+  const puedeDecidir = !decidido && !soloLectura;
+
+  function ejecutar() {
+    if (!accion) return;
+    setAviso(null);
+    startTransition(async () => {
+      const resultado = await (accion === "aprobar" ? aprobar : rechazar)({
+        numero: estudio.numero,
+        comentario: comentario.trim() || undefined,
+      });
+      if (!resultado.ok) {
+        setAviso(resultado.error);
+        return;
+      }
+      setAccion(null);
+      setComentario("");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="space-y-5 min-w-0">
+        <section className="bg-card rounded-xl border p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Resultado</h2>
+              {estudio.nombreConsultado && (
+                <p className="text-muted-foreground mt-0.5 text-sm">
+                  {estudio.nombreConsultado}
+                </p>
+              )}
+            </div>
+            <PastillaNivel nivel={estudio.nivel ?? "sin_hallazgo"} />
+          </div>
+          {estudio.simulada && (
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-amber-700">
+              <AlertTriangle className="size-3.5" aria-hidden />
+              Consulta simulada: no gastó créditos reales.
+            </p>
+          )}
+        </section>
+
+        <section className="bg-card rounded-xl border p-5">
+          <h2 className="text-sm font-semibold">Fuentes consultadas</h2>
+          <ul className="mt-3 divide-y text-sm">
+            {Object.entries(estudio.fuentes).map(([fuente, estado]) => (
+              <li
+                key={fuente}
+                className="flex items-center justify-between gap-3 py-2"
+              >
+                <span className="truncate">{fuente}</span>
+                <PastillaFuente estado={estado} />
+              </li>
+            ))}
+            {Object.keys(estudio.fuentes).length === 0 && (
+              <li className="text-muted-foreground py-2">
+                Sin fuentes disponibles.
+              </li>
+            )}
+          </ul>
+        </section>
+
+        <section className="bg-card rounded-xl border p-5">
+          <h2 className="text-sm font-semibold">Hallazgos</h2>
+          {estudio.hallazgos.length === 0 ? (
+            <p className="text-muted-foreground mt-2 text-sm">
+              Sin hallazgos en las fuentes consultadas.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {estudio.hallazgos.map((h, i) => (
+                <li
+                  key={`${h.codigo}-${i}`}
+                  className="rounded-lg border p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{h.titulo}</p>
+                      <p className="text-muted-foreground text-xs">
+                        {h.fuente}
+                      </p>
+                    </div>
+                    <PastillaNivel nivel={h.nivel} tamaño="sm" />
+                  </div>
+                  <p className="mt-2 text-sm">{h.descripcion}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <aside className="space-y-4">
+        <section className="bg-card rounded-xl border p-5">
+          <h2 className="text-sm font-semibold">Solicitud</h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            <Dato etiqueta="Solicitante" valor={estudio.solicitante} />
+            <Dato etiqueta="Fecha" valor={fechaHora(estudio.fecha)} />
+            <Dato
+              etiqueta="Módulo"
+              valor={estudio.modulo === "vehiculo" ? "Vehículo" : "Documento"}
+            />
+            <Dato etiqueta="Entrada" valor={estudio.descripcion} />
+          </dl>
+        </section>
+
+        {decidido ? (
+          <section className="bg-card rounded-xl border p-5">
+            <h2 className="text-sm font-semibold">Decisión</h2>
+            <p
+              className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
+                estudio.decision === "aprobado"
+                  ? "border-primary/25 bg-primary/10 text-primary"
+                  : "border-destructive/25 bg-destructive/10 text-destructive"
+              }`}
+            >
+              {estudio.decision === "aprobado" ? (
+                <Check className="size-3.5" aria-hidden />
+              ) : (
+                <X className="size-3.5" aria-hidden />
+              )}
+              {estudio.decision === "aprobado" ? "Aprobado" : "Rechazado"}
+            </p>
+            {estudio.comentario && (
+              <p className="mt-3 rounded-md bg-muted/40 px-3 py-2 text-sm italic">
+                {estudio.comentario}
+              </p>
+            )}
+          </section>
+        ) : puedeDecidir ? (
+          <section className="bg-card rounded-xl border p-5">
+            <h2 className="text-sm font-semibold">Decisión</h2>
+            <p className="text-muted-foreground mt-2 text-xs">
+              El solicitante verá únicamente aprobado o rechazado y tu
+              comentario. Los hallazgos nunca se le muestran.
+            </p>
+            {aviso && (
+              <Aviso tipo="error" className="mt-3">
+                {aviso}
+              </Aviso>
+            )}
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                type="button"
+                onClick={() => setAccion("aprobar")}
+                disabled={procesando}
+              >
+                <CircleCheck className="size-4" aria-hidden />
+                Aprobar
+              </Button>
+              <Button
+                type="button"
+                variante="peligro"
+                onClick={() => setAccion("rechazar")}
+                disabled={procesando}
+              >
+                <CircleAlert className="size-4" aria-hidden />
+                Rechazar
+              </Button>
+            </div>
+          </section>
+        ) : (
+          <section className="bg-card rounded-xl border p-5">
+            <h2 className="text-sm font-semibold">Decisión</h2>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Pendiente de revisión por el verificador.
+            </p>
+          </section>
+        )}
+      </aside>
+
+      <Dialogo
+        abierto={accion !== null}
+        onCerrar={() => {
+          if (!procesando) {
+            setAccion(null);
+            setComentario("");
+          }
+        }}
+        titulo={accion === "aprobar" ? "Aprobar estudio" : "Rechazar estudio"}
+        descripcion={`SOL-${String(estudio.numero).padStart(6, "0")} · ${estudio.descripcion}`}
+      >
+        <div className="space-y-4">
+          <Field
+            id="comentario"
+            label="Comentario (lo verá el solicitante)"
+            hint="Opcional. Máximo 500 caracteres."
+          >
+            <textarea
+              id="comentario"
+              value={comentario}
+              onChange={(e) => setComentario(e.target.value.slice(0, 500))}
+              rows={4}
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus-visible:border-primary"
+              placeholder={
+                accion === "aprobar"
+                  ? "Ej. Documentación completa, apto para operar."
+                  : "Ej. Hallazgo en listas restrictivas."
+              }
+            />
+          </Field>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variante="secundario"
+              onClick={() => {
+                setAccion(null);
+                setComentario("");
+              }}
+              disabled={procesando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variante={accion === "rechazar" ? "peligro" : "primario"}
+              onClick={ejecutar}
+              disabled={procesando}
+            >
+              {procesando && (
+                <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              )}
+              Confirmar {accion === "aprobar" ? "aprobación" : "rechazo"}
+            </Button>
+          </div>
+        </div>
+      </Dialogo>
+    </div>
+  );
+}
+
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="text-muted-foreground w-24 shrink-0 text-xs">
+        {etiqueta}
+      </dt>
+      <dd className="min-w-0 flex-1 text-sm">{valor}</dd>
+    </div>
+  );
+}
+
+function PastillaFuente({ estado }: { estado: ResultadoFuente }) {
+  const config = {
+    ok: {
+      texto: "Sin hallazgo",
+      clase: "border-primary/25 bg-primary/5 text-primary",
+    },
+    hallazgo: {
+      texto: "Hallazgo",
+      clase: "border-destructive/30 bg-destructive/5 text-destructive",
+    },
+    error: {
+      texto: "Error de fuente",
+      clase: "border-amber-500/30 bg-amber-500/5 text-amber-700",
+    },
+  }[estado];
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${config.clase}`}
+    >
+      {config.texto}
+    </span>
+  );
+}

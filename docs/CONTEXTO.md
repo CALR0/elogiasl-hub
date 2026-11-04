@@ -35,8 +35,7 @@ Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (d
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
-Estudios        › Solicitar · Mis solicitudes                             (migracion ← elogix, fase 1 simulada)
-                › Verificar · Historial                                   (en construcción)
+Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (migracion ← elogix, modo simulado)
 Auditoría       › Visor de logs                                           (disponible)
 Configuración   › Roles · Usuarios                                        (disponible)
 ```
@@ -245,8 +244,12 @@ confirmación en pantalla) por cada manifiesto, en un paso:
   propietario), con autorización Habeas Data obligatoria. Permiso `estudios.solicitar`.
 - **Mis solicitudes** — lista paginada de lo que envió el usuario con estado y, si ya hay, decisión
   y comentario del verificador. **Nunca muestra fuentes ni hallazgos.** Permiso `estudios.mis-solicitudes`.
-- **Verificar estudios** (fase 2) — bandeja del verificador: hallazgos, fuentes, aprobar/rechazar.
-- **Historial** (fase 2) — lo ya revisado, con filtros y exportación.
+- **Verificar estudios** — bandeja ordenada por nivel de riesgo (grave primero). Detalle con fuentes,
+  hallazgos y eventos. Botones **Aprobar** / **Rechazar** con comentario opcional (lo ve el solicitante).
+  Permiso `estudios.verificar`. La decisión la aplica el server con la admin client a
+  `estudio_resultados`; el trigger la propaga a la solicitud.
+- **Historial** — estudios decididos, con filtro por decisión (aprobados/rechazados) y búsqueda.
+  Permiso `estudios.historial`. El detalle comparte ruta con Verificar pero en modo lectura.
 
 ### 6.1 Separación por RLS
 Los roles de elogix (`usuario` / `admin`) se reemplazan por permisos sobre estas hojas. "Quien
@@ -317,6 +320,6 @@ mismo resultado). Las solicitudes quedan con `simulada = true` para distinguirla
   reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
 - ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
 - Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
-- 🟡 Estudios fase 1 (Solicitar + Mis solicitudes) migrado de elogix-app en modo simulado.
-- ⏭️ Estudios fase 2: Verificar + Historial + integración TusDatos real (ver §6).
+- 🟡 Estudios (Solicitar + Mis solicitudes + Verificar + Historial) migrado de elogix-app en modo simulado.
+- ⏭️ Estudios fase 3: integración TusDatos real (reemplazar simulador por API) y exportación del historial.
 - ⏭️ Módulos en construcción: Factura.

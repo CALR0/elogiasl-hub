@@ -25,8 +25,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 | **Financiero** | Factura | En construcción |
 | | Transferencia › **Migración anticipo SAP** | ✅ Funcionando |
 | **Maestros** | Vehículo › **Generar ficha técnica** | ✅ Funcionando |
-| **Estudios** | **Solicitar** · **Mis solicitudes** | 🟡 Fase 1 (modo simulado) |
-| | Verificar · Historial | En construcción |
+| **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | 🟡 Modo simulado |
 | **Auditoría** | **Visor de logs** | ✅ Funcionando |
 | **Configuración** | **Roles** · **Usuarios** | ✅ Funcionando |
 
@@ -47,11 +46,13 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   rechazó por las retenciones (FOPAT o retención en la fuente) o por remesas sin cumplir: cumple
   primero las remesas que el RNDC no tenga cumplidas (con el último XML del log RNDC de Silogtran),
   toma el flete pactado que tiene el RNDC, corrige las retenciones y radica el cumplido.
-- **Solicitar estudios** y **Mis solicitudes** (Estudios) — quien tiene el permiso envía solicitudes
-  de estudio por documento (CC, CE, PPT, PP, NIT) o por vehículo (placa + propietario); quedan en
-  su bandeja "Mis solicitudes" con el estado y la decisión del verificador (nunca ve hallazgos ni
-  fuentes). Mientras no haya API de TusDatos, se procesan en **modo simulado** (deterministas, sin
-  gastar créditos). *(Antes era la app ELOGIX.)*
+- **Estudios** — quien tiene **Solicitar** envía solicitudes por documento (CC, CE, PPT, PP, NIT) o
+  por vehículo (placa + propietario). Quedan en su bandeja **Mis solicitudes** con estado y decisión
+  del verificador (nunca ve hallazgos ni fuentes). Quien tiene **Verificar** revisa la bandeja
+  ordenada por nivel de riesgo, abre el detalle con fuentes y hallazgos, y aprueba o rechaza con
+  comentario. **Historial** lista lo decidido con filtros por decisión. Mientras no haya API de
+  TusDatos, se procesa en **modo simulado** (deterministas, sin gastar créditos). *(Antes era la app
+  ELOGIX.)*
 - **Monitoreo vehículo** (Despacho › Tráfico) — localiza vehículos en el mapa y consulta su viaje
   activo en Control T. Busca por una o varias **placas** (separadas por coma) o por **manifiesto u
   orden**. Muestra la posición GPS, dirección, prestador, estado del viaje, avance, conductor con su

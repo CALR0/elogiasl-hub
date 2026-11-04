@@ -214,12 +214,22 @@ export const MODULOS: readonly NodoModulo[] = [
         nombre: "Verificar estudios",
         descripcion: "Bandeja del verificador: revisar hallazgos y decidir.",
         icono: "verificar",
+        estado: "migracion",
+        origen: {
+          nombre: "ELOGIX",
+          repo: "https://github.com/CALR0/elogix-app",
+        },
       },
       {
         clave: "estudios.historial",
         nombre: "Historial",
         descripcion: "Estudios revisados, decisiones y trazabilidad.",
         icono: "historial",
+        estado: "migracion",
+        origen: {
+          nombre: "ELOGIX",
+          repo: "https://github.com/CALR0/elogix-app",
+        },
       },
     ],
   },
