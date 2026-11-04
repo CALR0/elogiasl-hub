@@ -51,13 +51,11 @@ export function CierrePorInactividad({ minutos }: { minutos: number }) {
     const limiteMs = minutos * 60 * 1000;
     const avisoMs = AVISO_SEG * 1000;
 
-    // Normaliza el estado al montar
-    const marcaInicial = leerActividad();
-    if (!localStorage.getItem(CLAVE_LS)) guardarActividad();
-    if (ahora() - marcaInicial >= limiteMs) {
-      void cerrarPorInactividad();
-      return;
-    }
+    // Al montar el componente YA estamos autenticados (el layout corrió
+    // `requireUsuario`), así que la marca anterior en localStorage pertenece
+    // a otra sesión (otra cuenta, o la misma tras logout/login) y no es
+    // válida: hay que resetearla para no cerrar inmediatamente.
+    guardarActividad();
 
     function limpiarTimers() {
       if (timerAviso.current) clearTimeout(timerAviso.current);
