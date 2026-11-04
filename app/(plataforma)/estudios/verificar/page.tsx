@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Encabezado } from "@/components/plataforma/encabezado";
+import {
+  CreditosTusDatos,
+  CreditosTusDatosCargando,
+} from "@/components/estudios/creditos-tusdatos";
 import { requirePermiso } from "@/lib/auth";
 import { listarPendientes } from "@/lib/estudios/datos";
 import { BandejaVerificar } from "./bandeja-verificar";
@@ -16,6 +21,9 @@ export default async function VerificarEstudiosPage() {
         titulo="Verificar estudios"
         descripcion="Pendientes de decisión, ordenados por nivel de riesgo. Entra al detalle para aprobar o rechazar."
       />
+      <Suspense fallback={<CreditosTusDatosCargando />}>
+        <CreditosTusDatos />
+      </Suspense>
       <BandejaVerificar items={pendientes} />
     </div>
   );

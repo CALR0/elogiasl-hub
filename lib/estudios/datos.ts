@@ -1,4 +1,5 @@
 import "server-only";
+import { getUsuarioActual } from "@/lib/auth";
 import { MODO_DEMO } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 import { almacenEstudios, aResumen } from "./demo";
@@ -37,17 +38,24 @@ function moduloDe(tipo: TipoDocumento): "documento" | "vehiculo" {
   return tipo === "PLACA" ? "vehiculo" : "documento";
 }
 
-/** "Mis solicitudes": solo las que yo creé. */
+/**
+ * "Mis solicitudes": solo las que YO creé. Filtramos explícitamente aunque
+ * exista la policy de "propias", porque un verificador también tiene la
+ * policy que le deja leer todas, y se activa aquí si no filtramos.
+ */
 export async function listarMisSolicitudes(): Promise<SolicitudResumen[]> {
   if (MODO_DEMO) {
     return almacenEstudios().solicitudes.map(aResumen);
   }
+  const usuario = await getUsuarioActual();
+  if (!usuario) return [];
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
       "id, numero, tipo_documento, documento, nombre, placa, estado, created_at, decision, comentario_verificador, decidida_at",
     )
+    .eq("created_by", usuario.id)
     .order("created_at", { ascending: false });
   if (error) {
     console.error("[estudios]", error);
