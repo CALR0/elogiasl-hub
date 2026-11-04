@@ -1,21 +1,21 @@
-import { AlertTriangle, CircleCheck, Coins, FlaskConical } from "lucide-react";
+import { AlertTriangle, FlaskConical } from "lucide-react";
 import { obtenerClienteTusDatos } from "@/lib/estudios/tusdatos";
 import { cx } from "@/lib/utils";
 
 /**
- * Tarjeta con los créditos disponibles en TusDatos. Si no hay credenciales,
- * avisa que se está en modo simulado. Se renderiza en servidor; mete en
- * Suspense para que no bloquee la página mientras consulta a TusDatos.
+ * Chip compacto con los créditos TusDatos: número restante, "de N comprados"
+ * y barrita de progreso tintada según el porcentaje consumido. En Suspense
+ * para no bloquear la página.
  */
 export async function CreditosTusDatos() {
   const cliente = obtenerClienteTusDatos();
   if (!cliente) {
     return (
-      <Tarjeta
+      <Chip
         tono="ambar"
-        icono={<FlaskConical className="size-5" aria-hidden />}
-        titulo="Modo simulado"
-        descripcion="Sin credenciales de TusDatos. Las consultas no gastan créditos."
+        icono={<FlaskConical className="size-3.5" aria-hidden />}
+        label="Modo simulado"
+        valor="sin créditos"
       />
     );
   }
@@ -23,13 +23,10 @@ export async function CreditosTusDatos() {
   let amount: number | null = null;
   let totalComprado: number | null = null;
   try {
-    // TusDatos devuelve un array con los planes del usuario:
-    //   [{ amount, purchase_amount, user, ... }]
     const respuesta = (await cliente.creditos()) as unknown;
     const planes = Array.isArray(respuesta) ? respuesta : [respuesta];
     const plan = planes[0] as Record<string, unknown> | undefined;
-    const posible = plan?.amount;
-    if (typeof posible === "number") amount = posible;
+    if (typeof plan?.amount === "number") amount = plan.amount;
     if (typeof plan?.purchase_amount === "number")
       totalComprado = plan.purchase_amount;
     if (amount === null)
@@ -37,91 +34,115 @@ export async function CreditosTusDatos() {
   } catch (e) {
     console.error("[tusdatos.creditos]", e);
   }
+
   if (typeof amount !== "number") {
     return (
-      <Tarjeta
+      <Chip
         tono="rojo"
-        icono={<AlertTriangle className="size-5" aria-hidden />}
-        titulo="TusDatos no responde"
-        descripcion="No se pudo consultar los créditos. Revisa las credenciales o intenta más tarde."
+        icono={<AlertTriangle className="size-3.5" aria-hidden />}
+        label="TusDatos"
+        valor="no responde"
       />
     );
   }
-  const bajo = amount < 50;
+
+  const total = totalComprado ?? Math.max(amount, 1);
+  const porcentaje = Math.max(0, Math.min(100, (amount / total) * 100));
+  const tono: Tono =
+    porcentaje < 10 ? "rojo" : porcentaje < 30 ? "ambar" : "verde";
+
   return (
-    <Tarjeta
-      tono={bajo ? "rojo" : "verde"}
-      icono={
-        bajo ? (
-          <AlertTriangle className="size-5" aria-hidden />
-        ) : (
-          <CircleCheck className="size-5" aria-hidden />
-        )
-      }
-      titulo={
-        <>
-          <span className="tabular-nums">
+    <div className="bg-card flex items-center gap-3 self-start rounded-full border px-3 py-1.5 text-xs sm:gap-4 sm:px-4">
+      <span className="text-muted-foreground font-medium">Créditos</span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex items-baseline gap-1">
+          <span
+            className={cx("text-sm font-semibold tabular-nums", TEXTO[tono])}
+          >
             {amount.toLocaleString("es-CO")}
-          </span>{" "}
-          <span className="text-xs font-normal">créditos</span>
-        </>
-      }
-      descripcion={
-        totalComprado
-          ? `${bajo ? "Quedan pocos créditos. " : ""}De ${totalComprado.toLocaleString("es-CO")} comprados.`
-          : bajo
-            ? "Quedan pocos créditos. Avisa al administrador de TusDatos."
-            : "Créditos disponibles para consultar antecedentes."
-      }
-    />
+          </span>
+          {totalComprado !== null && (
+            <span className="text-muted-foreground tabular-nums">
+              / {totalComprado.toLocaleString("es-CO")}
+            </span>
+          )}
+        </span>
+        <div
+          className="bg-muted relative h-1.5 w-20 overflow-hidden rounded-full sm:w-28"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(porcentaje)}
+          aria-label={`${amount} créditos TusDatos restantes de ${total}`}
+          title={`${Math.round(porcentaje)}% restante`}
+        >
+          <div
+            className={cx("h-full rounded-full transition-all", BARRA[tono])}
+            style={{ width: `${porcentaje}%` }}
+          />
+        </div>
+        <span
+          className={cx(
+            "hidden tabular-nums sm:inline",
+            porcentaje < 30 ? TEXTO[tono] : "text-muted-foreground",
+          )}
+        >
+          {Math.round(porcentaje)}%
+        </span>
+      </div>
+    </div>
   );
 }
 
-/** Esqueleto mientras se consultan los créditos. */
+/** Esqueleto mientras se consulta TusDatos. */
 export function CreditosTusDatosCargando() {
   return (
-    <Tarjeta
-      tono="gris"
-      icono={<Coins className="size-5" aria-hidden />}
-      titulo={<span className="bg-muted inline-block h-5 w-20 animate-pulse rounded" />}
-      descripcion={<span className="bg-muted inline-block h-3 w-40 animate-pulse rounded" />}
-    />
+    <div className="bg-card flex items-center gap-3 self-start rounded-full border px-3 py-1.5 text-xs">
+      <span className="text-muted-foreground font-medium">Créditos</span>
+      <span className="bg-muted inline-block h-3 w-14 animate-pulse rounded" />
+      <span className="bg-muted inline-block h-1.5 w-20 animate-pulse rounded-full sm:w-28" />
+    </div>
   );
 }
 
-function Tarjeta({
+type Tono = "verde" | "ambar" | "rojo";
+
+const TEXTO: Record<Tono, string> = {
+  verde: "text-primary",
+  ambar: "text-amber-700",
+  rojo: "text-destructive",
+};
+const BARRA: Record<Tono, string> = {
+  verde: "bg-primary",
+  ambar: "bg-amber-500",
+  rojo: "bg-destructive",
+};
+
+function Chip({
   tono,
   icono,
-  titulo,
-  descripcion,
+  label,
+  valor,
 }: {
-  tono: "verde" | "ambar" | "rojo" | "gris";
+  tono: "ambar" | "rojo";
   icono: React.ReactNode;
-  titulo: React.ReactNode;
-  descripcion: React.ReactNode;
+  label: string;
+  valor: string;
 }) {
-  const clases: Record<typeof tono, string> = {
-    verde: "border-primary/25 bg-primary/5 text-primary",
-    ambar: "border-amber-500/25 bg-amber-500/5 text-amber-700",
-    rojo: "border-destructive/30 bg-destructive/5 text-destructive",
-    gris: "border-border bg-muted/40 text-muted-foreground",
-  };
+  const clases =
+    tono === "ambar"
+      ? "border-amber-500/30 bg-amber-500/5 text-amber-700"
+      : "border-destructive/30 bg-destructive/5 text-destructive";
   return (
-    <aside
+    <span
       className={cx(
-        "flex items-start gap-3 rounded-xl border p-4",
-        clases[tono],
+        "inline-flex items-center gap-1.5 self-start rounded-full border px-3 py-1.5 text-xs font-medium",
+        clases,
       )}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/60">
-        {icono}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-base font-semibold leading-tight">{titulo}</p>
-        <p className="text-foreground/70 mt-0.5 text-xs leading-relaxed">
-          {descripcion}
-        </p>
-      </div>
-    </aside>
+      {icono}
+      <span className="text-foreground/70">{label}</span>
+      <span>· {valor}</span>
+    </span>
   );
 }
