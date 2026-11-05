@@ -373,9 +373,9 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 ## 8. Estado actual (2026-11-04) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
-Cada push a `main` despliega. Las migraciones hasta `20261105030000` están aplicadas en producción y las credenciales de TusDatos están
-en Vercel (confirmado por el equipo). Falta aplicar `20261105040000_estudios_cierre_y_limpieza.sql`, que
-borra los estudios de prueba: el 2026-11-04 solo había una solicitud simulada y se detiene si hay consultas reales.
+Cada push a `main` despliega. Todas las migraciones, hasta `20261105040000_estudios_cierre_y_limpieza`, están aplicadas en producción y
+el último commit está desplegado; las credenciales de TusDatos están en Vercel (confirmado por el equipo).
+Esa migración borró los estudios de prueba: producción arranca sin solicitudes.
 
 **En producción:**
 - ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
@@ -390,8 +390,14 @@ borra los estudios de prueba: el 2026-11-04 solo había una solicitud simulada y
 - ✅ Despacho › Tráfico › **Monitoreo vehículo** (ex TVIEWER, Control T).
 
 **En proceso:**
-- 🔄 **Estudios** (Solicitar, Mis solicitudes, Verificar, Historial; ver §6): construido con
-  TusDatos real o simulador, aún sin cerrar.
+- 🔄 **Estudios** (Solicitar, Mis solicitudes, Verificar, Historial; ver §6): construido, sin probar aún
+  contra TusDatos real ni contra el Supabase real (solo simulador, servidor falso y Postgres embebido).
+
+**Siguiente paso: primera prueba real de Estudios (la hace el equipo).** Una consulta de documento y otra
+de cabezote con remolque, con Mis solicitudes o Verificar abierta. Luego revisar con lo que traiga el equipo:
+número `SOL-…`, líneas `[estudios]` de Vercel (se guardan poco tiempo), bitácora del estudio y eventos
+`estudio.*` del Visor de logs (ver "Trazabilidad para pruebas" en §6.2). Si se activó
+`TUSDATOS_LOG_COMPLETO`, recordar quitarla al terminar.
 
 **Módulos en construcción:** Financiero › Factura.
 
@@ -402,14 +408,13 @@ borra los estudios de prueba: el 2026-11-04 solo había una solicitud simulada y
 - ⏭️ Simplificación opcional de Estudios: `estado` repite aprobado/rechazado de `decision`.
 - ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él mismo
   tiene. Hoy puede darle cualquier módulo a otra cuenta, incluso una segunda suya.
-- ⏭️ Estudios, prueba real pendiente (ver §6.2): aplicar la migración y confirmar los accesos por rol (`estudios.solicitar` +
-  `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`). Por confirmar con TusDatos real:
-  que `/api/launch/car` acepte placas de remolque, la forma de `vehiculo`/`soat`/`revision`, si
-  `report_json` sirve para vehículos y si el HTML del reporte se ve bien sin scripts.
+- ⏭️ Estudios, por confirmar en la prueba real: que `/api/launch/car` acepte placas de remolque (si no, usar la
+  consulta combinada `vehicle_combo`), la forma de `vehiculo`/`soat`/`revision`, si `report_json` sirve para
+  vehículos, si el HTML del reporte se ve bien sin scripts y que los roles tengan sus accesos
+  (`estudios.solicitar` + `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`).
 - ⏭️ Estudios, limitación conocida: los resultados se recogen mientras alguien tenga abierta una pantalla
   de Estudios. Si nadie la abre en 2 horas el job vence y la consulta queda en error, con el crédito gastado.
   Se resuelve con el webhook de TusDatos.
 - ⏭️ Menores (visto al leer el código): Leaflet se carga de unpkg sin SRI; mover el mouse renueva el
   aviso de inactividad aunque el comentario dice que el usuario debe confirmar.
-- ⏭️ Siguientes fases de Estudios: webhook de TusDatos para consultas largas, exportación del
-  historial, reporte HTML/PDF por Route Handler con verificación de permiso.
+- ⏭️ Siguientes fases de Estudios: webhook de TusDatos para consultas largas y exportación del historial.
