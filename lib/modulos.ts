@@ -212,7 +212,7 @@ export const MODULOS: readonly NodoModulo[] = [
       {
         clave: "estudios.verificar",
         nombre: "Verificar estudios",
-        descripcion: "Bandeja del verificador: revisar hallazgos y decidir.",
+        descripcion: "Bandeja del analista: revisar hallazgos y decidir.",
         icono: "verificar",
         estado: "migracion",
         origen: {

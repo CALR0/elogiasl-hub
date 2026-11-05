@@ -89,10 +89,7 @@ export const consultaVehiculoSchema = z
       .string()
       .trim()
       .toUpperCase()
-      .regex(
-        PLACA_REGEX,
-        "Placa inválida. Formato ABC123 (carro) o ABC12D (moto).",
-      ),
+      .regex(PLACA_REGEX, "Placa inválida. Formato ABC123."),
     tipoPropietario: z.enum(["CC", "CE", "NIT", "TI"]),
     documentoPropietario: soloDigitos,
     incluirRemolque: z.boolean(),

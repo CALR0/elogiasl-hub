@@ -98,11 +98,11 @@ export const ESTADOS: Record<
   },
   aprobado: {
     etiqueta: "Aprobado",
-    descripcion: "El verificador aprobó el estudio.",
+    descripcion: "El analista aprobó el estudio.",
   },
   rechazado: {
     etiqueta: "Rechazado",
-    descripcion: "El verificador rechazó el estudio.",
+    descripcion: "El analista rechazó el estudio.",
   },
   error: {
     etiqueta: "No enviada",

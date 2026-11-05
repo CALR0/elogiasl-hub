@@ -15,7 +15,7 @@ export default async function MisSolicitudesPage() {
       <Encabezado
         icono="solicitudes"
         titulo="Mis solicitudes"
-        descripcion="Estado y decisión del verificador para las solicitudes que enviaste."
+        descripcion="Estado y decisión del analista para las solicitudes que enviaste."
       />
       {solicitudes.some((s) => s.estado === "procesando") && (
         <ActualizadorEstudios />

@@ -172,7 +172,7 @@ export function DetalleEstudio({
             <p className="text-muted-foreground mt-2 text-sm">
               {enProceso
                 ? "Se podrá decidir cuando terminen las consultas."
-                : "Pendiente de revisión por el verificador."}
+                : "Pendiente de revisión por el analista."}
             </p>
           </section>
         )}

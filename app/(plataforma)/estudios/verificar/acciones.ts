@@ -79,8 +79,8 @@ async function decidir(
       tipo: decision === "aprobado" ? "ok" : "info",
       texto:
         decision === "aprobado"
-          ? "Estudio aprobado por el verificador."
-          : "Estudio rechazado por el verificador.",
+          ? "Estudio aprobado por el analista."
+          : "Estudio rechazado por el analista.",
     });
   }
 

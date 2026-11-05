@@ -113,7 +113,7 @@ export function FormularioVehiculo() {
         value={datos.placa}
         onChange={(v) => set("placa", v)}
         placeholder="ABC123"
-        ayuda="Carro o cabezote: ABC123 · Moto: ABC12D"
+        ayuda="Carro o cabezote: ABC123"
         error={errores.placa}
       />
 

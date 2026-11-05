@@ -32,7 +32,7 @@ export default async function SolicitarEstudiosPage() {
       <Encabezado
         icono="solicitar"
         titulo="Solicitar estudios"
-        descripcion="Elige el tipo de consulta. El verificador revisará los hallazgos y decidirá."
+        descripcion="Elige el tipo de consulta. El analista revisará los hallazgos y decidirá."
       />
       <section className="grid gap-4 sm:grid-cols-2">
         {MODULOS.map(({ href, icono: Icono, titulo, texto, etiqueta }) => (
