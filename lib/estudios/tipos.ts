@@ -40,8 +40,7 @@ export type EstadoConsulta = "procesando" | "finalizada" | "error";
 
 /** Una consulta a TusDatos dentro del estudio, con su propio resultado. */
 export interface ConsultaEstudio {
-  /** null en estudios anteriores a esta tabla (sin reporte). */
-  id: string | null;
+  id: string;
   rol: RolConsulta;
   placa: string | null;
   tipoDoc: string | null;

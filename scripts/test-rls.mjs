@@ -405,11 +405,11 @@ await sinSesion(override(SIN_NADA, "configuracion.usuarios", "otorgar"));
 await sinSesion(override(SIN_NADA, "configuracion.roles", "otorgar"));
 r = await as(
   SIN_NADA,
-  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m, public.tiene_permiso('auditoria.visor-logs') as p, public.tiene_acceso('financiero') as f",
+  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m, public.tiene_acceso('financiero') as f",
 );
 check(
   "otorgado: abre la funcionalidad y su módulo, no otros",
-  r.rows?.[0].h && r.rows?.[0].m && r.rows?.[0].p && !r.rows?.[0].f,
+  r.rows?.[0].h && r.rows?.[0].m && !r.rows?.[0].f,
   r,
 );
 r = await as(SIN_NADA, "select * from public.audit_logs");
@@ -432,11 +432,11 @@ await sinSesion(override(LECTOR, "auditoria.visor-logs", "revocar"));
 await sinSesion(override(USUARIOS_G, "configuracion.usuarios", "revocar"));
 r = await as(
   LECTOR,
-  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m, public.tiene_permiso('auditoria.visor-logs') as p",
+  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m",
 );
 check(
   "revocado: sin la funcionalidad ni su módulo",
-  r.rows?.[0].h === false && r.rows?.[0].m === false && r.rows?.[0].p === false,
+  r.rows?.[0].h === false && r.rows?.[0].m === false,
   r,
 );
 r = await as(LECTOR, "select * from public.audit_logs");
@@ -481,11 +481,9 @@ for (const [id, rol] of [
 const {
   rows: [{ id: SOLICITUD }],
 } = await sinSesion(`insert into public.estudio_solicitudes
-  (created_by, tipo_documento, documento, placa, tipo_doc_propietario, placa_remolque,
-   tipo_doc_propietario_remolque, documento_propietario_remolque, autorizacion_titular)
-  values ('${SOLICITA}', 'PLACA', '111', 'ABC123', 'CC', 'R12345', 'TI', '222', true)
+  (created_by, tipo_documento, documento, placa, tipo_doc_propietario, placa_remolque, autorizacion_titular)
+  values ('${SOLICITA}', 'PLACA', '111', 'ABC123', 'CC', 'R12345', true)
   returning id`);
-check("el propietario del remolque admite los mismos tipos (TI)", Boolean(SOLICITUD));
 const insertarConsulta = (rol, placa) =>
   sinSesion(`insert into public.estudio_consultas (solicitud_id, rol, placa, tipo_doc, documento)
     values ('${SOLICITUD}', '${rol}', '${placa}', 'CC', '111') returning id`);
@@ -494,8 +492,8 @@ const {
 } = await insertarConsulta("cabezote", "ABC123");
 await insertarConsulta("remolque", "R12345");
 await sinSesion(`insert into public.estudio_hallazgos
-  (solicitud_id, consulta_id, nivel, fuente, codigo, titulo, descripcion)
-  values ('${SOLICITUD}', '${CONSULTA}', 'alto', 'F', 'c', 't', 'd')`);
+  (consulta_id, nivel, fuente, codigo, titulo, descripcion)
+  values ('${CONSULTA}', 'alto', 'F', 'c', 't', 'd')`);
 let repetida = null;
 try {
   await insertarConsulta("remolque", "R99999");
@@ -504,6 +502,15 @@ try {
 }
 check("un estudio no repite cabezote ni remolque", Boolean(repetida), repetida);
 
+const insertarAprobada = `insert into public.estudio_solicitudes
+  (created_by, tipo_documento, documento, autorizacion_titular, estado, decision)
+  values ('${SOLICITA}', 'CC', '111', true, 'aprobado', 'aprobado')`;
+r = await as(SOLICITA, insertarAprobada);
+check("quien solicita no crea por la API un estudio ya aprobado", err(r), r);
+r = await as(VERIFICA, insertarAprobada);
+check("nadie inserta solicitudes desde el navegador", err(r), r);
+r = await as(SOLICITA, "select public.tiene_permiso('estudios.solicitar')");
+check("tiene_permiso ya no existe: solo tiene_acceso", err(r), r);
 r = await as(SOLICITA, "select * from public.estudio_consultas");
 check("quien solicita no ve las consultas", ok(r, 0), r);
 r = await as(SOLICITA, "select * from public.estudio_hallazgos");

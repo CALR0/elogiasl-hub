@@ -193,8 +193,6 @@ export async function crearSolicitud(
       placa: entrada.placa,
       tipo_doc_propietario: entrada.tipoDocPropietario,
       placa_remolque: entrada.placaRemolque,
-      tipo_doc_propietario_remolque: entrada.tipoDocPropietarioRemolque,
-      documento_propietario_remolque: entrada.documentoPropietarioRemolque,
       autorizacion_titular: true,
       estado: "procesando",
       simulada,
@@ -206,10 +204,20 @@ export async function crearSolicitud(
   const solicitudId = creada.id as string;
   const numero = creada.numero as number;
 
+  // Si no se pudo preparar, no queda colgada "en proceso" ni se gastan créditos
+  const abortar = async (mensaje: string) => {
+    trazar("estudio.no_preparado", { numero, mensaje });
+    await admin
+      .from("estudio_solicitudes")
+      .update({ estado: "error" })
+      .eq("id", solicitudId);
+    return new Error(mensaje);
+  };
+
   const { error: errorResultado } = await admin
     .from("estudio_resultados")
     .insert({ solicitud_id: solicitudId });
-  if (errorResultado) throw new Error(errorResultado.message);
+  if (errorResultado) throw await abortar(errorResultado.message);
 
   const { data: filas, error: errorConsultas } = await admin
     .from("estudio_consultas")
@@ -220,12 +228,11 @@ export async function crearSolicitud(
         placa: p.placa,
         tipo_doc: p.tipoDoc,
         documento: p.documento,
-        simulada,
       })),
     )
     .select("id, rol");
   if (errorConsultas || !filas)
-    throw new Error(
+    throw await abortar(
       errorConsultas?.message ?? "No se guardaron las consultas.",
     );
   const idDe = (rol: RolConsulta) =>
@@ -387,7 +394,6 @@ async function finalizarConsulta(
       .from("estudio_hallazgos")
       .insert(
         r.hallazgos.map((h) => ({
-          solicitud_id: solicitudId,
           consulta_id: consultaId,
           nivel: h.nivel,
           fuente: h.fuente,

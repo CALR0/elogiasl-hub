@@ -93,7 +93,7 @@ export function DetalleEstudio({
         </section>
 
         {estudio.consultas.map((c) => (
-          <TarjetaConsulta key={c.id ?? c.rol} consulta={c} />
+          <TarjetaConsulta key={c.id} consulta={c} />
         ))}
       </div>
 
