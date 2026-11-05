@@ -13,11 +13,14 @@ export const maxDuration = 60;
 const MODULO = "estudios.verificar";
 
 /**
- * El HTML viene de un tercero: se sirve en una zona aislada (sin scripts ni
- * acceso a la sesión ni a la página del portal), solo con sus estilos e imágenes.
+ * El HTML viene de un tercero: se aísla con `default-src 'none'` para que no
+ * ejecute scripts ni cargue XHR, websockets, popups ni nada más que no
+ * declaremos. Dejamos solo estilos, fuentes e imágenes. No ponemos `sandbox`
+ * en la CSP para que el iframe quede same-origin y el padre pueda disparar
+ * el diálogo de impresión del navegador sobre el reporte (ver `vista-reporte.tsx`).
  */
 const CSP_REPORTE =
-  "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; frame-ancestors 'self'";
+  "default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; frame-ancestors 'self'";
 
 /**
  * Reporte de TusDatos de una consulta: ?formato=html para verlo en el portal o
