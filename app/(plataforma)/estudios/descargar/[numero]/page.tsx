@@ -46,13 +46,19 @@ export default async function DescargarEstudioPage({
 
   const consultas = estudio.consultas
     .filter((c) => c.tieneReporte)
-    .map((c) => ({
-      id: c.id,
-      titulo: `${NOMBRE_ROL[c.rol]}${c.placa ? ` · ${c.placa}` : ""}`,
-      subtitulo:
-        c.nombreConsultado ??
-        (c.tipoDoc && c.documento ? `${c.tipoDoc} ${c.documento}` : ""),
-    }));
+    .map((c) => {
+      const partes = [NOMBRE_ROL[c.rol].toLowerCase()];
+      if (c.placa) partes.push(c.placa);
+      else if (c.tipoDoc && c.documento) partes.push(`${c.tipoDoc} ${c.documento}`);
+      return {
+        id: c.id,
+        titulo: `${NOMBRE_ROL[c.rol]}${c.placa ? ` · ${c.placa}` : ""}`,
+        subtitulo:
+          c.nombreConsultado ??
+          (c.tipoDoc && c.documento ? `${c.tipoDoc} ${c.documento}` : ""),
+        archivo: partes.join(" "),
+      };
+    });
 
   const etiqueta = estudio.descripcion;
   const numeroStr2 = `SOL-${String(numero).padStart(6, "0")}`;
