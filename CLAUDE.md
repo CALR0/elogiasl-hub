@@ -20,6 +20,7 @@ actualiza su sección "Estado actual" al terminar una sesión.
 - Módulos: `lib/modulos.ts` es la fuente única. Un nodo nuevo también va en una migración nueva de `public.modulos`.
 - Autorización en tres capas: `proxy.ts` → `requireUsuario` / `requirePermiso` (`lib/auth.ts`) en cada página,
   Server Function y Route Handler → RLS. Nunca confiar solo en ocultar el menú.
+- Permiso efectivo = (rol) ∪ (otorgado) ∖ (revocado): `lib/auth.ts` y `public.tiene_acceso()` deben calcular lo mismo.
 - Toda acción relevante se registra con `registrarAuditoria()` (`lib/auditoria.ts`) y su texto va en `lib/gestion/etiquetas.ts`.
   Nunca contraseñas ni tokens en `detalle`.
 - Lecturas/escrituras nuevas deben funcionar también en modo demostración (`lib/gestion/demo.ts`).

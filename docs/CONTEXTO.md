@@ -1,7 +1,7 @@
 # soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
 > Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
-> Última actualización: 2026-11-05.
+> Última actualización: 2026-11-04.
 > Resumen para usuarios: [README.md](../README.md).
 
 ## 1. Qué es
@@ -13,7 +13,8 @@ herramientas que vivían como aplicaciones separadas:
 |---|---|---|
 | [sma-elogia](https://github.com/CALR0/sma-elogia) | Migración de anticipos a SAP (Silogtran → AWS) | Financiero › Transferencia › **Migración anticipo SAP** ✅ |
 | [fvec-elogia](https://github.com/CALR0/fvec-elogia) | Fichas PDF de vehículo/conductor desde Silogtran | Maestros › Vehículo › **Generar ficha técnica** ✅ |
-| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (migrado 2026-11-05) |
+| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (en proceso) |
+| TVIEWER (`tviewer/controlt-mapa`) | Ubicación y viajes en Control T | Despacho › Tráfico › **Monitoreo vehículo** ✅ |
 
 ## 2. Stack (alineado con elogix-app)
 
@@ -35,7 +36,7 @@ Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (d
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
-Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (migracion ← elogix, modo simulado)
+Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (en proceso ← elogix; TusDatos o simulado)
 Auditoría       › Visor de logs                                           (disponible)
 Configuración   › Roles · Usuarios                                        (disponible)
 ```
@@ -70,6 +71,13 @@ Modelo:
   de administración sin RLS).
 - Nadie (salvo el superadministrador) edita, desactiva ni cambia los accesos del rol al que
   pertenece (triggers `roles_proteger_propio` y `rol_permisos_proteger_propio`).
+- `usuario_permisos` — **accesos individuales**: sobre el rol, a un usuario se le otorga o revoca una
+  funcionalidad (trigger `usuario_permisos_validar_hoja`). Permiso efectivo = (rol) ∪ (otorgado) ∖
+  (revocado); el superadministrador los ignora. Se edita en Configuración › Usuarios
+  (`guardarAccesosUsuario`, auditoría `usuario.accesos`). `lib/auth.ts` y `public.tiene_acceso()`
+  calculan lo mismo, y `tiene_permiso()` llama a `tiene_acceso()`: **cualquier cambio a la regla va en
+  los dos lados**. Nadie (salvo el superadministrador) cambia sus propios accesos individuales, tampoco
+  por la API (trigger `usuario_permisos_proteger_propios`, migración `20261105020000`).
 - `audit_logs` — la escribe solo el servidor (`registrarAuditoria()` en `lib/auditoria.ts`) con
   módulo, acción, resultado (`ok/error/denegado`), detalle, IP y navegador. Nadie la edita ni borra.
   Códigos actuales y sus textos: `lib/gestion/etiquetas.ts` (agrega ahí cada acción nueva).
@@ -83,7 +91,7 @@ Modelo:
   Config: `NEXT_PUBLIC_INACTIVIDAD_MINUTOS` (1–240, por defecto 30).
 - `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
   existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
-- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 47 pruebas de
+- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 69 pruebas de
   RLS, funciones y triggers. Córrelo antes de subir cambios de BD.
 
 ### Configuración y Auditoría (implementado)
@@ -302,13 +310,12 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 
 1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
 2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
-   (`…000000_init`, `…010000_gestion_roles_usuarios`, `…020000_permisos_por_acceso`,
-   `…030000_silogtran_sesion`, `20261102000000_expedir_manifiesto_sicetac` y
-   `20261102010000_migracion_cumplido_rndc`).
+   (todos, por orden de nombre; el último es `20261105020000_overrides_en_tiene_acceso`).
 3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
-   de Silogtran (`SILOG_USUARIO`/`SILOG_CLAVE`), `WAF_CHROME_PATH` (solo local) y `X_API_KEY` de AWS.
+   de Silogtran (`SILOG_USUARIO`/`SILOG_CLAVE`), `WAF_CHROME_PATH` (solo local), `X_API_KEY` de AWS,
+   `RNDC_USUARIO`/`RNDC_CLAVE`, `CONTROLT_USUARIO`/`CONTROLT_CLAVE` y `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE`.
 5. Vercel (desplegado en https://elogiasl-hub.vercel.app): repo importado, **Node.js 24.x**,
    región de funciones **pdx1** (la misma de Supabase, us-west-2), las mismas variables salvo
    `WAF_CHROME_PATH` y el mismo `SESSION_SECRET` que en local (comparten la sesión de Silogtran
@@ -325,42 +332,49 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-05 · estudios v2) y siguientes pasos
+## 8. Estado actual (2026-11-04) y siguientes pasos
 
-**Funcionando en local contra el Supabase real** (migraciones aplicadas, primer administrador creado):
+Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
+Cada push a `main` despliega. Estado reportado por el equipo el 2026-11-04.
 
-- ✅ Login, menú de módulos según accesos del rol, inicio, avisos "En construcción", modo
-  claro/oscuro, diseño adaptado a celular, pantallas de carga.
-- ✅ Configuración › Roles (accesos por módulo/submódulo/funcionalidad) y Usuarios.
-- ✅ Auditoría › Visor de logs (filtros sin recarga, paginación, detalle, CSV, en vivo).
-- ✅ Maestros › Vehículo › **Generar ficha técnica** (ex FVE-C), probado con placas reales usando la
-  cuenta de servicio de Silogtran.
-- ✅ Financiero › Transferencia › **Migración anticipo SAP** (ex SMA), probado con planillas reales y
-  `X_API_KEY` configurada (detecta lo ya migrado y no lo reenvía).
-- ✅ Pruebas: `db:test` (47), `test:fichas`, `test:anticipos`, `probar:waf`; lint, tipos y build limpios.
+**En producción:**
+- ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
+  elige), diseño adaptado a celular, cierre por inactividad.
+- ✅ Configuración › Roles y Usuarios (incluye accesos individuales por usuario).
+- ✅ Auditoría › Visor de logs (filtros, paginación, detalle, CSV, en vivo).
+- ✅ Maestros › Vehículo › **Generar ficha técnica** (ex FVE-C).
+- ✅ Financiero › Transferencia › **Migración anticipo SAP** (ex SMA).
+- ✅ Despacho › Manifiesto › **Expedir manifiesto SICETAC**.
+- ✅ Despacho › Cumplido manifiesto › **Migración cumplido RNDC** (cumple antes las remesas sin
+  cumplido en el RNDC).
+- ✅ Despacho › Tráfico › **Monitoreo vehículo** (ex TVIEWER, Control T).
+
+**En proceso:**
+- 🔄 **Estudios** (Solicitar, Mis solicitudes, Verificar, Historial; ver §6): construido con
+  TusDatos real o simulador, aún sin cerrar.
+
+**Módulos en construcción:** Financiero › Factura.
+
+**Pruebas:** `db:test` (69), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
+`probar:waf`. `db:test` todavía no cubre las tablas de Estudios.
 
 **Pendiente:**
-- ✅ Desplegado en **Vercel**: https://elogiasl-hub.vercel.app (región pdx1, Node 24.x; ver §7),
-  conectado al Supabase real.
-- ✅ Despacho › Manifiesto › **Expedir manifiesto SICETAC**: probado de punta a punta con un
-  manifiesto real (calcular y expedir con radicado).
-- ✅ Despacho › Cumplido manifiesto › **Migración cumplido RNDC**: probado radicando cumplidos
-  reales (incluye cumplir antes las remesas sin cumplido en el RNDC).
-- ✅ Migración `20261102020000_proteger_superadmin.sql` aplicada (seguridad de roles y usuarios).
-- Modo claro por defecto; el oscuro solo si el usuario lo elige (se recuerda en el navegador).
-- 🟢 Estudios completos (Solicitar con dos formularios fieles a elogix + Mis solicitudes +
-  Verificar + Historial), con integración TusDatos real cuando las credenciales están en el
-  entorno y fallback automático a simulador. Consulta vehicular con remolque opcional. Chip de
-  créditos en la esquina derecha del encabezado, "Mis solicitudes" filtrado por usuario.
-- ⏭️ Pendiente antes de producción en Vercel:
-  - Aplicar en Supabase, en orden, las migraciones `20261105000000_estudios.sql` y
-    `20261105010000_estudios_remolque.sql`.
-  - Poner `TUSDATOS_USUARIO` y `TUSDATOS_CLAVE` en `.env.local` y en Vercel. Opcional
-    `TUSDATOS_BASE_URL` (default `https://dash-board.tusdatos.co`).
-  - En Configuración › Roles marcar `estudios.solicitar` + `estudios.mis-solicitudes` a los
-    solicitantes y `estudios.verificar` + `estudios.historial` al Analista PSF (u otro rol que
-    designen).
-- ⏭️ Siguientes fases: webhook de TusDatos para consultas asíncronas largas (sobrepasar los 60 s
-  de timeout de Vercel Pro), exportación del historial a Excel/CSV, reporte HTML/PDF de TusDatos
-  por Route Handler con verificación de permiso.
-- ⏭️ Módulos en construcción: Factura.
+- ⏭️ **Aplicar en Supabase** `20261105020000_overrides_en_tiene_acceso.sql`: hasta entonces, en
+  producción sigue abierto el autootorgamiento por la API y los accesos individuales no llegan a RLS
+  (ver §4). No depende de ningún despliegue.
+- ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él mismo
+  tiene. Hoy puede darle cualquier módulo a otra cuenta, incluso una segunda suya.
+- ⏭️ Estudios, antes de activarlo con TusDatos real (visto al leer el código, sin ejecutar):
+  - Si TusDatos responde con error, `consultarReal` guarda los resultados del simulador con estado
+    `error`: un verificador podría ver hallazgos inventados sobre una persona real.
+  - El remolque se guarda, pero `consultarReal` solo envía el cabezote a `/api/launch/car`.
+  - La consulta se hace antes de guardar la solicitud: si falla el guardado, los créditos se gastan
+    sin registro. Un rol con Solicitar y sin Mis solicitudes fallaría ahí (el insert lee la fila y RLS
+    lo niega). La espera llega a ~90 s y estas rutas no definen `maxDuration`.
+  - Confirmar que estén aplicadas `20261105000000_estudios.sql` y `20261105010000_estudios_remolque.sql`,
+    las variables `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` en Vercel y los accesos por rol
+    (`estudios.solicitar` + `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`).
+- ⏭️ Menores (visto al leer el código): Leaflet se carga de unpkg sin SRI; mover el mouse renueva el
+  aviso de inactividad aunque el comentario dice que el usuario debe confirmar.
+- ⏭️ Siguientes fases de Estudios: webhook de TusDatos para consultas largas, exportación del
+  historial, reporte HTML/PDF por Route Handler con verificación de permiso.

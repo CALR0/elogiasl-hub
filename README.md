@@ -25,7 +25,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 | **Financiero** | Factura | En construcción |
 | | Transferencia › **Migración anticipo SAP** | ✅ Funcionando |
 | **Maestros** | Vehículo › **Generar ficha técnica** | ✅ Funcionando |
-| **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | ✅ Funcionando (TusDatos real o modo simulado) |
+| **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | En proceso (TusDatos real o modo simulado) |
 | **Auditoría** | **Visor de logs** | ✅ Funcionando |
 | **Configuración** | **Roles** · **Usuarios** | ✅ Funcionando |
 
@@ -50,7 +50,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   por vehículo (placa + propietario). Quedan en su bandeja **Mis solicitudes** con estado y decisión
   del verificador (nunca ve hallazgos ni fuentes). Quien tiene **Verificar** revisa la bandeja
   ordenada por nivel de riesgo, abre el detalle con fuentes y hallazgos, y aprueba o rechaza con
-  comentario. **Historial** lista lo decidido con filtros por decisión. Mientras no haya API de
+  comentario. **Historial** lista lo decidido con filtros por decisión. Sin credenciales de
   TusDatos, se procesa en **modo simulado** (deterministas, sin gastar créditos). *(Antes era la app
   ELOGIX.)*
 - **Monitoreo vehículo** (Despacho › Tráfico) — localiza vehículos en el mapa y consulta su viaje
@@ -62,7 +62,9 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 - **Roles** — crear, editar, activar o inactivar roles, marcando a qué partes del portal acceden.
   Nadie (salvo el administrador) puede modificar el rol al que pertenece.
 - **Usuarios** — crear cuentas, asignarles un rol, editarlas y activarlas o inactivarlas. Las
-  cuentas de administrador solo las gestiona otro administrador.
+  cuentas de administrador solo las gestiona otro administrador. A cada usuario se le puede otorgar
+  o quitar un módulo puntual sobre lo que da su rol; nadie (salvo el administrador) cambia sus propios
+  accesos.
 - **Visor de logs** — todo lo que pasa en el portal, con filtros (fechas, usuario, módulo, acción,
   resultado y búsqueda), detalle de cada registro (incluido lo que se envió a SAP) y exportación a CSV.
 
