@@ -301,12 +301,13 @@ pantalla completa (`sandbox="allow-same-origin allow-modals"` — scripts bloque
 el diálogo nativo de impresión). El botón "Descargar" dispara `contentWindow.print()` y el usuario elige
 "Guardar como PDF". `next.config.ts` excluye esa ruta de su CSP global.
 
-**Descarga desde la bandeja:** `GET /api/estudios/estudio/{numero}/pdf` baja todos los reportes del
-estudio en un paso. Si hay una sola consulta entrega su PDF; si hay varias, las empaqueta con `fflate` en
-un ZIP nombrado `PLACA ABC123 dd-mm-yyyy.zip` (o `DOC {numero} dd-mm-yyyy.zip` para estudios de documento).
-Si cualquier PDF aún se está construyendo en TusDatos responde 202 y el cliente (`BotonDescargarEstudio`)
-reintenta cada ~10 s hasta MAX_INTENTOS. El botón aparece junto a "Revisar" en la bandeja y en Historial,
-solo cuando el estudio está finalizada y no es simulada.
+**Descarga desde la bandeja:** `/estudios/descargar/{numero}` apila los HTML oficiales de TusDatos de
+todas las consultas del estudio en iframes `allow-same-origin` (sin scripts) y dispara `window.print()`
+cuando terminan de cargar. El usuario elige "Guardar como PDF" en el diálogo del navegador y recibe
+**un solo archivo con todo** — el `document.title` sugiere `SOL-000003 PLACA ABC123 05-11-2026`.
+`BotonDescargarEstudio` es un simple link `target="_blank"`: no polea TusDatos ni espera la
+construcción asíncrona del PDF. Aparece junto a "Revisar" en la bandeja y en Historial cuando el
+estudio está finalizada y no es simulada.
 
 **Trazabilidad para pruebas:**
 - Vercel → Logs, buscar `[estudios]`: una línea JSON por petición a TusDatos (`tusdatos.http`: ruta, status,
