@@ -328,5 +328,141 @@ check(
   r.rows,
 );
 
+// Accesos individuales por usuario: (rol) ∪ (otorgado) ∖ (revocado)
+/** Escritura del sistema, sin sesión de usuario (como la secret key). */
+async function sinSesion(sql) {
+  await db.exec("select set_config('request.jwt.claim.sub', '', false)");
+  return db.query(sql);
+}
+const USUARIOS_G = "66666666-6666-4666-8666-666666666666"; // solo gestiona usuarios
+const LECTOR = "77777777-7777-4777-8777-777777777777"; // solo ve logs
+const SIN_NADA = "88888888-8888-4888-8888-888888888888"; // rol sin accesos
+const OTRO = "99999999-9999-4999-8999-999999999999"; // rol sin accesos
+const nuevoRol = async (nombre, accesos) => {
+  const {
+    rows: [{ id }],
+  } = await sinSesion(
+    `insert into public.roles (nombre) values ('${nombre}') returning id`,
+  );
+  for (const a of accesos)
+    await sinSesion(
+      `insert into public.rol_permisos (rol_id, modulo_clave) values ('${id}', '${a}')`,
+    );
+  return id;
+};
+const ROL_USUARIOS = await nuevoRol("Solo usuarios", ["configuracion.usuarios"]);
+const ROL_LECTOR = await nuevoRol("Solo logs", ["auditoria.visor-logs"]);
+const ROL_VACIO = await nuevoRol("Sin accesos", []);
+for (const [id, rol] of [
+  [USUARIOS_G, ROL_USUARIOS],
+  [LECTOR, ROL_LECTOR],
+  [SIN_NADA, ROL_VACIO],
+  [OTRO, ROL_VACIO],
+])
+  await sinSesion(`insert into auth.users (id, email, raw_app_meta_data)
+    values ('${id}', '${id.slice(0, 1)}@elogia.test', '${JSON.stringify({ rol_id: rol })}')`);
+const override = (usuario, modulo, tipo) =>
+  `insert into public.usuario_permisos (usuario_id, modulo_clave, tipo) values ('${usuario}', '${modulo}', '${tipo}')`;
+const limpiarOverrides = () => sinSesion("delete from public.usuario_permisos");
+const ANTICIPOS = "financiero.transferencia.migracion-anticipo-sap";
+
+// Autootorgamiento
+r = await as(USUARIOS_G, override(USUARIOS_G, ANTICIPOS, "otorgar"));
+check("gestor de usuarios no se otorga accesos a sí mismo", err(r), r);
+await sinSesion(override(USUARIOS_G, ANTICIPOS, "revocar"));
+r = await as(
+  USUARIOS_G,
+  `delete from public.usuario_permisos where usuario_id='${USUARIOS_G}'`,
+);
+check("ni se borra una revocación propia", err(r), r);
+r = await as(
+  USUARIOS_G,
+  `update public.usuario_permisos set tipo='otorgar' where usuario_id='${USUARIOS_G}'`,
+);
+check("ni convierte una revocación propia en otorgamiento", err(r), r);
+await limpiarOverrides();
+r = await as(USUARIOS_G, override(OTRO, ANTICIPOS, "otorgar"));
+check("gestor de usuarios otorga accesos a otro usuario", !r.error, r);
+r = await as(
+  USUARIOS_G,
+  `update public.usuario_permisos set usuario_id='${USUARIOS_G}' where usuario_id='${OTRO}'`,
+);
+check("ni moviéndose el acceso de otro usuario", err(r), r);
+await limpiarOverrides();
+r = await as(SIN_NADA, override(OTRO, ANTICIPOS, "otorgar"));
+check("sin gestionar usuarios no se otorgan accesos", err(r), r);
+r = await as(USUARIOS_G, override(ADMIN, "financiero.factura", "otorgar"));
+check("no se dan accesos individuales a un superadmin", err(r), r);
+r = await as(USUARIOS_G, override(OTRO, "financiero", "otorgar"));
+check("solo a funcionalidades, no a un módulo padre", err(r), r);
+await sinSesion(override(OTRO, ANTICIPOS, "otorgar"));
+check("el servidor (sin sesión) sí escribe accesos individuales", true);
+await limpiarOverrides();
+
+// Otorgado: las políticas lo reconocen
+await sinSesion(override(SIN_NADA, "auditoria.visor-logs", "otorgar"));
+await sinSesion(override(SIN_NADA, "configuracion.usuarios", "otorgar"));
+await sinSesion(override(SIN_NADA, "configuracion.roles", "otorgar"));
+r = await as(
+  SIN_NADA,
+  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m, public.tiene_permiso('auditoria.visor-logs') as p, public.tiene_acceso('financiero') as f",
+);
+check(
+  "otorgado: abre la funcionalidad y su módulo, no otros",
+  r.rows?.[0].h && r.rows?.[0].m && r.rows?.[0].p && !r.rows?.[0].f,
+  r,
+);
+r = await as(SIN_NADA, "select * from public.audit_logs");
+check("otorgado el visor: lee los logs", ok(r, 1), r);
+r = await as(SIN_NADA, "select id from public.perfiles");
+check("otorgado usuarios: ve todos los perfiles", ok(r) && r.rows.length > 1, r);
+r = await as(
+  SIN_NADA,
+  `update public.perfiles set nombre_completo='z' where id='${OTRO}' returning id`,
+);
+check("otorgado usuarios: edita otro perfil", ok(r, 1), r);
+r = await as(SIN_NADA, guardar(null, "Rol de otorgado", []));
+check("otorgado roles: guarda un rol", ok(r, 1), r);
+r = await as(SIN_NADA, guardar(ROL_VACIO, "Sin accesos", []));
+check("otorgado roles: tampoco edita el rol al que pertenece", err(r), r);
+await limpiarOverrides();
+
+// Revocado: las políticas también lo niegan
+await sinSesion(override(LECTOR, "auditoria.visor-logs", "revocar"));
+await sinSesion(override(USUARIOS_G, "configuracion.usuarios", "revocar"));
+r = await as(
+  LECTOR,
+  "select public.tiene_acceso('auditoria.visor-logs') as h, public.tiene_acceso('auditoria') as m, public.tiene_permiso('auditoria.visor-logs') as p",
+);
+check(
+  "revocado: sin la funcionalidad ni su módulo",
+  r.rows?.[0].h === false && r.rows?.[0].m === false && r.rows?.[0].p === false,
+  r,
+);
+r = await as(LECTOR, "select * from public.audit_logs");
+check("revocado el visor: no lee logs por la API", ok(r, 0), r);
+r = await as(USUARIOS_G, "select id from public.perfiles");
+check("revocado usuarios: solo ve su perfil", ok(r, 1), r);
+r = await as(
+  USUARIOS_G,
+  `update public.perfiles set nombre_completo='y' where id='${OTRO}' returning id`,
+);
+check("revocado usuarios: no edita otros perfiles", err(r) || ok(r, 0), r);
+await limpiarOverrides();
+
+// Inactivos y superadmin
+await sinSesion(override(SIN_NADA, ANTICIPOS, "otorgar"));
+await sinSesion(`update public.perfiles set activo=false where id='${SIN_NADA}'`);
+r = await as(SIN_NADA, `select public.tiene_acceso('${ANTICIPOS}') as a`);
+check("usuario inactivo: lo otorgado no vale", r.rows?.[0].a === false, r);
+await sinSesion(`update public.perfiles set activo=true where id='${SIN_NADA}'`);
+await sinSesion(`update public.roles set activo=false where id='${ROL_VACIO}'`);
+r = await as(SIN_NADA, `select public.tiene_acceso('${ANTICIPOS}') as a`);
+check("rol inactivo: lo otorgado no vale", r.rows?.[0].a === false, r);
+await sinSesion(`update public.roles set activo=true where id='${ROL_VACIO}'`);
+await limpiarOverrides();
+r = await as(ADMIN, `select public.tiene_acceso('${ANTICIPOS}') as a`);
+check("superadmin sigue con acceso total", r.rows?.[0].a === true, r);
+
 console.log(fallas ? `\n${fallas} prueba(s) fallaron` : "\nTodo en orden");
 process.exit(fallas ? 1 : 0);
