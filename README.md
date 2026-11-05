@@ -47,10 +47,11 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   primero las remesas que el RNDC no tenga cumplidas (con el último XML del log RNDC de Silogtran),
   toma el flete pactado que tiene el RNDC, corrige las retenciones y radica el cumplido.
 - **Estudios** — quien tiene **Solicitar** envía solicitudes por documento (CC, CE, PPT, PP, NIT) o
-  por vehículo (placa + propietario). Quedan en su bandeja **Mis solicitudes** con estado y decisión
+  por vehículo (placa + propietario y, si lleva, remolque con su placa y propietario; cada placa se
+  consulta por aparte y se evalúan en un mismo estudio). Quedan en su bandeja **Mis solicitudes** con estado y decisión
   del verificador (nunca ve hallazgos ni fuentes). Quien tiene **Verificar** revisa la bandeja
-  ordenada por nivel de riesgo, abre el detalle con fuentes y hallazgos, y aprueba o rechaza con
-  comentario. **Historial** lista lo decidido con filtros por decisión. Sin credenciales de
+  ordenada por nivel de riesgo, abre el detalle con el resultado de cada consulta (fuentes, hallazgos, reporte en pantalla y
+  PDF), y aprueba o rechaza con comentario. **Historial** lista lo decidido con filtros por decisión. Sin credenciales de
   TusDatos, se procesa en **modo simulado** (deterministas, sin gastar créditos). *(Antes era la app
   ELOGIX.)*
 - **Monitoreo vehículo** (Despacho › Tráfico) — localiza vehículos en el mapa y consulta su viaje
@@ -100,7 +101,7 @@ npm run dev          # http://localhost:3000
 - Variables de entorno: copia `.env.example` a `.env` (o `.env.local`) y complétalo.
 - Base de datos: los archivos de `supabase/migrations/` se aplican en orden en el SQL Editor de Supabase.
 - Pruebas: `npm run db:test` (permisos de la base de datos), `npm run test:fichas`,
-  `npm run test:anticipos`, `npm run test:sicetac`, `npm run test:cumplidos`, `npm run probar:waf` (firewall de Silogtran),
+  `npm run test:anticipos`, `npm run test:sicetac`, `npm run test:cumplidos`, `npm run test:estudios`, `npm run probar:waf` (firewall de Silogtran),
   `npm run probar:sicetac` (cálculo en el portal SICETAC).
 - Revisión: `npm run lint` · `npm run type-check` · `npm run build`.
 

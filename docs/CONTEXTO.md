@@ -91,7 +91,7 @@ Modelo:
   Config: `NEXT_PUBLIC_INACTIVIDAD_MINUTOS` (1–240, por defecto 30).
 - `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
   existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
-- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 69 pruebas de
+- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 78 pruebas de
   RLS, funciones y triggers. Córrelo antes de subir cambios de BD.
 
 ### Configuración y Auditoría (implementado)
@@ -267,13 +267,46 @@ solicita nunca ve hallazgos" se garantiza en la BD: los resultados viven en tabl
 comentario del verificador se copian a `estudio_solicitudes` por trigger
 (`estudio_propagar_decision`) para que el solicitante los vea sin exponer resultados.
 
-### 6.2 TusDatos (real) y modo simulado
-Con `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` configuradas (`lib/estudios/tusdatos.ts`), cada solicitud
-hace `POST /api/launch` (o `/api/launch/car` para placas), espera hasta ~90 s el `GET /api/results/
-{jobid}` y guarda fuentes/hallazgos/nivel. Sin credenciales, `lib/estudios/simulador.ts` genera
-fuentes y hallazgos **deterministas** por documento/placa (misma entrada → mismo resultado). Las
-solicitudes quedan con `simulada = true/false` para distinguirlas. La consulta vehicular combinada
-soporta remolque opcional con su propia placa y propietario (fielmente portado de elogix-app).
+### 6.2 Consultas de un estudio y TusDatos
+Un estudio tiene una fila en `estudio_consultas` por cada consulta (`rol`): `documento`, o `cabezote`
+y, si lleva, `remolque`. Cada placa se consulta por aparte en `POST /api/launch/car` con su propietario
+(el mismo u otro; CC, CE, NIT o TI, y `doc` numérico como pide LaunchCarIn), y el verificador las
+evalúa en un solo estudio: `estudio_hallazgos.consulta_id` dice a cuál pertenece cada hallazgo y
+`estudio_resultados.nivel_maximo` guarda el más grave. Falta confirmar con una prueba real que
+`/api/launch/car` acepte placas `R`/`S`: la especificación no lo aclara.
+
+Flujo (`lib/estudios/procesar.ts`, cliente en `tusdatos.ts`, interpretación en `resultado.ts`):
+1. `crearSolicitud()` guarda solicitud y consultas y DESPUÉS lanza (si algo falla queda registro), y
+   responde sin esperar: una consulta tarda en promedio un minuto y el job vive 2 horas.
+2. Mientras haya consultas en proceso, `components/estudios/actualizador-estudios.tsx` (Mis solicitudes,
+   Verificar y el detalle) llama cada 10 s a `POST /api/estudios/sincronizar` → `sincronizarPendientes()`
+   → `GET /api/results/{jobid}`: 207 en proceso, 200 finalizado, 404 job vencido, 500 consulta fallida.
+   Un fallo de red o un 401 deja la consulta pendiente y se reintenta.
+3. Al finalizar se pide `GET /api/report_json/{id}` para el detalle de hallazgos (`dict_hallazgos`). Sin
+   ese detalle quedan las fuentes con hallazgo y la remisión al reporte.
+4. Sin consultas pendientes el estudio pasa a `finalizada`; solo entonces se puede decidir. Si todas
+   fallaron pasa a `error` y el solicitante lo ve al enviar.
+
+`hallazgos` llega como "Alto" o "alto": se compara sin mayúsculas (`normalizarNivel`). Si TusDatos falla,
+la consulta queda en error con su mensaje: **nunca se llenan datos simulados en una consulta real**. Sin
+`TUSDATOS_USUARIO`/`TUSDATOS_CLAVE`, `simulador.ts` genera resultados deterministas y el estudio queda con
+`simulada = true`.
+
+**Reportes:** `GET /api/estudios/reporte/{consulta}?formato=html|pdf` (solo Verificar o Historial; lee la
+consulta con la sesión del usuario). "Ver reporte" muestra el HTML de TusDatos en un iframe y "Descargar
+PDF" baja el oficial, reintentando mientras TusDatos responde 202. Ese HTML es de un tercero: se sirve con
+`Content-Security-Policy: sandbox` e `iframe sandbox`, sin scripts. Si el reporte necesitara scripts se
+vería incompleto y queda el PDF. `next.config.ts` excluye esa ruta de su CSP global, porque si no la reemplaza.
+
+**Trazabilidad para pruebas:**
+- Vercel → Logs, buscar `[estudios]`: una línea JSON por petición a TusDatos (`tusdatos.http`: ruta, status,
+  ms, envío y respuesta) y por paso (`estudio.creado`, `estudio.consulta_error`, `estudio.sin_detalle`,
+  `estudio.revision_fallo`). `ref` = `SOL-000123/remolque`. Nunca lleva credenciales.
+- Por defecto va un resumen con el documento enmascarado. `TUSDATOS_LOG_COMPLETO=true` agrega los cuerpos
+  completos, **con datos personales**: solo para una prueba puntual y luego volver a quitarla.
+- Visor de logs: `estudio.solicitar` (consultas, placas y jobid), `estudio.consulta` (resultado de cada
+  una), `estudio.reporte`, `estudio.aprobar` y `estudio.rechazar`.
+- Detalle del estudio: bitácora con cada paso (`estudio_eventos`).
 
 ### 6.3 Diseño de "Solicitar"
 Portado del diseño de elogix-app:
@@ -281,7 +314,8 @@ Portado del diseño de elogix-app:
 - **Documento** — `OpcionesPastilla` para el tipo (CC/CE/PPT/PP/NIT), fecha solo en CE/PPT, nombre
   solo en PP, autorización Habeas Data en su propio card.
 - **Vehículo** — campo `PlacaInput` con estilo de placa colombiana amarilla, `OpcionesPastilla` para
-  el tipo de propietario, toggle para "lleva remolque" con su propia placa R/S y propietario.
+  el tipo de propietario, toggle para "lleva remolque" con su propia placa R/S y propietario (mismos
+  tipos que el cabezote, o el mismo propietario).
 - **Resultado** — card centrado con referencia SOL-XXXXXX al enviar bien, o card de error con
   "Intentar de nuevo" conservando los datos.
 
@@ -298,19 +332,22 @@ política "verificador lee todas" también se aplica a quien tiene `estudios.ver
 que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 
 ### 6.6 Archivos clave
-- Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`.
-- Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,procesar,datos}.ts`.
+- Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`,
+  `20261105030000_estudios_consultas.sql`.
+- Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,resultado,traza,procesar,datos}.ts`.
+- API: `app/api/estudios/{sincronizar,reporte/[id]}/route.ts`.
 - Rutas: `app/(plataforma)/estudios/{solicitar/{documento,vehiculo},mis-solicitudes,verificar/
   [numero],historial}/`.
 - UI reusable: `components/estudios/{placa-input,pastilla-nivel,resultado-envio,creditos-tusdatos}.tsx`
   y `OpcionesPastilla`/`Autorizacion` en `components/ui/field.tsx`.
-- Auditoría: `estudio.solicitar`, `estudio.aprobar`, `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
+- Auditoría: `estudio.solicitar`, `estudio.consulta`, `estudio.reporte`, `estudio.aprobar`,
+  `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
 
 ## 7. Puesta en marcha
 
 1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
 2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
-   (todos, por orden de nombre; el último es `20261105020000_overrides_en_tiene_acceso`).
+   (todos, por orden de nombre; el último es `20261105030000_estudios_consultas`).
 3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
@@ -335,7 +372,8 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 ## 8. Estado actual (2026-11-04) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
-Cada push a `main` despliega. Estado reportado por el equipo el 2026-11-04.
+Cada push a `main` despliega. Las migraciones hasta `20261105020000` están aplicadas en producción
+(confirmado por el equipo); `20261105030000_estudios_consultas.sql` se aplica antes de la prueba de Estudios.
 
 **En producción:**
 - ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
@@ -355,25 +393,20 @@ Cada push a `main` despliega. Estado reportado por el equipo el 2026-11-04.
 
 **Módulos en construcción:** Financiero › Factura.
 
-**Pruebas:** `db:test` (69), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
-`probar:waf`. `db:test` todavía no cubre las tablas de Estudios.
+**Pruebas:** `db:test` (78), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
+`test:estudios` (respuestas de TusDatos y cliente contra un servidor falso, sin créditos), `probar:waf`.
 
 **Pendiente:**
-- ⏭️ **Aplicar en Supabase** `20261105020000_overrides_en_tiene_acceso.sql`: hasta entonces, en
-  producción sigue abierto el autootorgamiento por la API y los accesos individuales no llegan a RLS
-  (ver §4). No depende de ningún despliegue.
 - ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él mismo
   tiene. Hoy puede darle cualquier módulo a otra cuenta, incluso una segunda suya.
-- ⏭️ Estudios, antes de activarlo con TusDatos real (visto al leer el código, sin ejecutar):
-  - Si TusDatos responde con error, `consultarReal` guarda los resultados del simulador con estado
-    `error`: un verificador podría ver hallazgos inventados sobre una persona real.
-  - El remolque se guarda, pero `consultarReal` solo envía el cabezote a `/api/launch/car`.
-  - La consulta se hace antes de guardar la solicitud: si falla el guardado, los créditos se gastan
-    sin registro. Un rol con Solicitar y sin Mis solicitudes fallaría ahí (el insert lee la fila y RLS
-    lo niega). La espera llega a ~90 s y estas rutas no definen `maxDuration`.
-  - Confirmar que estén aplicadas `20261105000000_estudios.sql` y `20261105010000_estudios_remolque.sql`,
-    las variables `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` en Vercel y los accesos por rol
-    (`estudios.solicitar` + `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`).
+- ⏭️ Estudios, prueba real pendiente (ver §6.2): aplicar la migración, confirmar
+  `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` y los accesos por rol (`estudios.solicitar` +
+  `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`). Por confirmar con TusDatos real:
+  que `/api/launch/car` acepte placas de remolque, la forma de `vehiculo`/`soat`/`revision`, si
+  `report_json` sirve para vehículos y si el HTML del reporte se ve bien sin scripts.
+- ⏭️ Estudios, limitación conocida: los resultados se recogen mientras alguien tenga abierta una pantalla
+  de Estudios. Si nadie la abre en 2 horas el job vence y la consulta queda en error, con el crédito gastado.
+  Se resuelve con el webhook de TusDatos.
 - ⏭️ Menores (visto al leer el código): Leaflet se carga de unpkg sin SRI; mover el mouse renueva el
   aviso de inactividad aunque el comentario dice que el usuario debe confirmar.
 - ⏭️ Siguientes fases de Estudios: webhook de TusDatos para consultas largas, exportación del

@@ -12,7 +12,7 @@ actualiza su sección "Estado actual" al terminar una sesión.
   Es distinto de Next 15: consulta `node_modules/next/dist/docs/` antes de usar una API.
 - `npm run dev` · `lint` · `type-check` · `build` · `format`. Resumen para usuarios en `README.md`.
 - `npm run db:test` — aplica las migraciones en PGlite y prueba RLS/funciones/triggers. Si cambias la BD, actualízalo y córrelo.
-- `npm run test:fichas` (parser/PDF/Excel sin conexión) · `npm run test:anticipos` (parser del log) · `npm run test:sicetac` (XML del manifiesto) · `npm run test:cumplidos` (XML del cumplido) · `npm run probar:waf` (firewall de Silogtran).
+- `npm run test:fichas` (parser/PDF/Excel sin conexión) · `npm run test:anticipos` (parser del log) · `npm run test:sicetac` (XML del manifiesto) · `npm run test:cumplidos` (XML del cumplido) · `npm run test:estudios` (respuestas de TusDatos, sin créditos) · `npm run probar:waf` (firewall de Silogtran).
 - Sin `.env.local` la app corre en modo demostración (`lib/demo.ts`).
 - Silogtran: cuenta de servicio vía `conSilogtran()` (`lib/silogtran/`); lee la guía `silogtran-integration`.
 
