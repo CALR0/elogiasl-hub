@@ -1,7 +1,7 @@
 # soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
 > Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
-> Última actualización: 2026-11-04.
+> Última actualización: 2026-11-06.
 > Resumen para usuarios: [README.md](../README.md).
 
 ## 1. Qué es
@@ -13,7 +13,7 @@ herramientas que vivían como aplicaciones separadas:
 |---|---|---|
 | [sma-elogia](https://github.com/CALR0/sma-elogia) | Migración de anticipos a SAP (Silogtran → AWS) | Financiero › Transferencia › **Migración anticipo SAP** ✅ |
 | [fvec-elogia](https://github.com/CALR0/fvec-elogia) | Fichas PDF de vehículo/conductor desde Silogtran | Maestros › Vehículo › **Generar ficha técnica** ✅ |
-| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (en proceso) |
+| [elogix-app](https://github.com/CALR0/elogix-app) | Estudios de seguridad (TusDatos) | Estudios (funcionando) |
 | TVIEWER (`tviewer/controlt-mapa`) | Ubicación y viajes en Control T | Despacho › Tráfico › **Monitoreo vehículo** ✅ |
 
 ## 2. Stack (alineado con elogix-app)
@@ -36,7 +36,7 @@ Despacho        › Manifiesto › Expedir manifiesto SICETAC                 (d
 Financiero      › Factura                                                 (en construcción)
                 › Transferencia › Migración anticipo SAP                  (disponible ← SMA)
 Maestros        › Vehículo › Generar ficha técnica                        (disponible ← FVE-C)
-Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (en proceso ← elogix; TusDatos o simulado)
+Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (disponible ← elogix; TusDatos real o simulado)
 Auditoría       › Visor de logs                                           (disponible)
 Configuración   › Roles · Usuarios                                        (disponible)
 ```
@@ -408,14 +408,14 @@ solicitud: visualmente se distingue del flujo individual sin abrir el detalle.
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-04) y siguientes pasos
+## 8. Estado actual (2026-11-06) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
-Cada push a `main` despliega. Todas las migraciones, hasta `20261105040000_estudios_cierre_y_limpieza`, están aplicadas en producción y
-el último commit está desplegado; las credenciales de TusDatos están en Vercel (confirmado por el equipo).
-Esa migración borró los estudios de prueba: producción arranca sin solicitudes.
+Cada push a `main` despliega. Todas las migraciones, incluida `20261106000000_estudios_combo`, están
+aplicadas en producción y el último commit está desplegado. Credenciales de TusDatos configuradas y
+el módulo de Estudios ya hizo consultas reales contra `dash-board.tusdatos.co`.
 
-**En producción:**
+**En producción (todo funcionando):**
 - ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
   elige), diseño adaptado a celular, cierre por inactividad.
 - ✅ Configuración › Roles y Usuarios (incluye accesos individuales por usuario).
@@ -426,33 +426,24 @@ Esa migración borró los estudios de prueba: producción arranca sin solicitude
 - ✅ Despacho › Cumplido manifiesto › **Migración cumplido RNDC** (cumple antes las remesas sin
   cumplido en el RNDC).
 - ✅ Despacho › Tráfico › **Monitoreo vehículo** (ex TVIEWER, Control T).
-
-**En proceso:**
-- 🔄 **Estudios** (Solicitar, Mis solicitudes, Verificar, Historial; ver §6): construido, sin probar aún
-  contra TusDatos real ni contra el Supabase real (solo simulador, servidor falso y Postgres embebido).
-
-**Siguiente paso: primera prueba real de Estudios (la hace el equipo).** Una consulta de documento y otra
-de cabezote con remolque, con Mis solicitudes o Verificar abierta. Luego revisar con lo que traiga el equipo:
-número `SOL-…`, líneas `[estudios]` de Vercel (se guardan poco tiempo), bitácora del estudio y eventos
-`estudio.*` del Visor de logs (ver "Trazabilidad para pruebas" en §6.2). Si se activó
-`TUSDATOS_LOG_COMPLETO`, recordar quitarla al terminar.
+- ✅ **Estudios** › **Solicitar** (documento, vehículo individual y combo con tenedor /
+  conductor / antecedentes) · **Mis solicitudes** (con pastilla Individual / Combo y detalle
+  expandible) · **Verificar** · **Historial**. Integrado con TusDatos real; sin credenciales
+  vuelve a modo simulado. Chip de créditos TusDatos (restantes, con umbrales 100 / 50). Descarga
+  client-side del reporte PDF (individual) o ZIP con los PDF (combo), sin esperar al PDF
+  asíncrono de TusDatos.
 
 **Módulos en construcción:** Financiero › Factura.
 
 **Pruebas:** `db:test` (80), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
 `test:estudios` (respuestas de TusDatos y cliente contra un servidor falso, sin créditos), `probar:waf`.
 
-**Pendiente:**
-- ⏭️ Simplificación opcional de Estudios: `estado` repite aprobado/rechazado de `decision`.
-- ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él mismo
-  tiene. Hoy puede darle cualquier módulo a otra cuenta, incluso una segunda suya.
-- ⏭️ Estudios, por confirmar en la prueba real: que `/api/launch/car` acepte placas de remolque (si no, usar la
-  consulta combinada `vehicle_combo`), la forma de `vehiculo`/`soat`/`revision`, si `report_json` sirve para
-  vehículos, si el HTML del reporte se ve bien sin scripts y que los roles tengan sus accesos
-  (`estudios.solicitar` + `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`).
-- ⏭️ Estudios, limitación conocida: los resultados se recogen mientras alguien tenga abierta una pantalla
-  de Estudios. Si nadie la abre en 2 horas el job vence y la consulta queda en error, con el crédito gastado.
-  Se resuelve con el webhook de TusDatos.
-- ⏭️ Menores (visto al leer el código): Leaflet se carga de unpkg sin SRI; mover el mouse renueva el
-  aviso de inactividad aunque el comentario dice que el usuario debe confirmar.
-- ⏭️ Siguientes fases de Estudios: webhook de TusDatos para consultas largas y exportación del historial.
+**Pendiente (mejoras, no bloqueantes):**
+- ⏭️ Estudios: webhook de TusDatos para no depender de que alguien tenga una pantalla de
+  Estudios abierta. Hoy los resultados se recogen mientras haya pantalla abierta; si nadie la
+  abre en 2 horas el job vence y la consulta queda en error, con el crédito gastado.
+- ⏭️ Estudios: exportación del historial a CSV / Excel.
+- ⏭️ Simplificación opcional: `estudio_solicitudes.estado` repite aprobado/rechazado de `decision`.
+- ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él
+  mismo tiene. Hoy puede darle cualquier módulo a otra cuenta.
+- ⏭️ Financiero › Factura.

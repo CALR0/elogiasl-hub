@@ -192,44 +192,28 @@ export const MODULOS: readonly NodoModulo[] = [
         descripcion:
           "Envía los datos de un conductor o vehículo para su estudio.",
         icono: "solicitar",
-        estado: "migracion",
-        origen: {
-          nombre: "ELOGIX",
-          repo: "https://github.com/CALR0/elogix-app",
-        },
+        estado: "disponible",
       },
       {
         clave: "estudios.mis-solicitudes",
         nombre: "Mis solicitudes",
         descripcion: "Estado y decisión de las solicitudes que enviaste.",
         icono: "solicitudes",
-        estado: "migracion",
-        origen: {
-          nombre: "ELOGIX",
-          repo: "https://github.com/CALR0/elogix-app",
-        },
+        estado: "disponible",
       },
       {
         clave: "estudios.verificar",
         nombre: "Verificar estudios",
         descripcion: "Bandeja del analista: revisar hallazgos y decidir.",
         icono: "verificar",
-        estado: "migracion",
-        origen: {
-          nombre: "ELOGIX",
-          repo: "https://github.com/CALR0/elogix-app",
-        },
+        estado: "disponible",
       },
       {
         clave: "estudios.historial",
         nombre: "Historial",
         descripcion: "Estudios revisados, decisiones y trazabilidad.",
         icono: "historial",
-        estado: "migracion",
-        origen: {
-          nombre: "ELOGIX",
-          repo: "https://github.com/CALR0/elogix-app",
-        },
+        estado: "disponible",
       },
     ],
   },

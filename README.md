@@ -25,7 +25,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 | **Financiero** | Factura | En construcción |
 | | Transferencia › **Migración anticipo SAP** | ✅ Funcionando |
 | **Maestros** | Vehículo › **Generar ficha técnica** | ✅ Funcionando |
-| **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | En proceso (TusDatos real o modo simulado) |
+| **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | ✅ Funcionando (TusDatos real o modo simulado) |
 | **Auditoría** | **Visor de logs** | ✅ Funcionando |
 | **Configuración** | **Roles** · **Usuarios** | ✅ Funcionando |
 
