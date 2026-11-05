@@ -75,8 +75,8 @@ Modelo:
   funcionalidad (trigger `usuario_permisos_validar_hoja`). Permiso efectivo = (rol) ∪ (otorgado) ∖
   (revocado); el superadministrador los ignora. Se edita en Configuración › Usuarios
   (`guardarAccesosUsuario`, auditoría `usuario.accesos`). `lib/auth.ts` y `public.tiene_acceso()`
-  calculan lo mismo, y `tiene_permiso()` llama a `tiene_acceso()`: **cualquier cambio a la regla va en
-  los dos lados**. Nadie (salvo el superadministrador) cambia sus propios accesos individuales, tampoco
+  calculan lo mismo (`tiene_acceso()` es la única función de acceso en la BD): **cualquier cambio a la
+  regla va en los dos lados**. Nadie (salvo el superadministrador) cambia sus propios accesos individuales, tampoco
   por la API (trigger `usuario_permisos_proteger_propios`, migración `20261105020000`).
 - `audit_logs` — la escribe solo el servidor (`registrarAuditoria()` en `lib/auditoria.ts`) con
   módulo, acción, resultado (`ok/error/denegado`), detalle, IP y navegador. Nadie la edita ni borra.
@@ -91,7 +91,7 @@ Modelo:
   Config: `NEXT_PUBLIC_INACTIVIDAD_MINUTOS` (1–240, por defecto 30).
 - `guardar_rol()` guarda rol + accesos en una sola transacción y solo acepta funcionalidades
   existentes (no módulos padre). Trigger `proteger_ultimo_admin`: siempre queda un administrador activo.
-- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 78 pruebas de
+- `npm run db:test` aplica las migraciones en Postgres embebido (PGlite) y corre 80 pruebas de
   RLS, funciones y triggers. Córrelo antes de subir cambios de BD.
 
 ### Configuración y Auditoría (implementado)
@@ -262,8 +262,9 @@ confirmación en pantalla) por cada manifiesto, en un paso:
 ### 6.1 Separación por RLS
 Los roles de elogix (`usuario` / `admin`) se reemplazan por permisos sobre estas hojas. "Quien
 solicita nunca ve hallazgos" se garantiza en la BD: los resultados viven en tablas separadas
-(`estudio_resultados`, `estudio_hallazgos`, `estudio_eventos`) cuyo select solo pasa con
-`tiene_permiso('estudios.verificar')` o `tiene_permiso('estudios.historial')`. La decisión y el
+(`estudio_consultas`, `estudio_resultados`, `estudio_hallazgos`, `estudio_eventos`) cuyo select solo
+pasa con `tiene_acceso('estudios.verificar')` o `tiene_acceso('estudios.historial')`. El reporte exige lo
+mismo. Las solicitudes y todo lo demás de Estudios los escribe solo el servidor: nadie inserta por la API. La decisión y el
 comentario del verificador se copian a `estudio_solicitudes` por trigger
 (`estudio_propagar_decision`) para que el solicitante los vea sin exponer resultados.
 
@@ -271,7 +272,7 @@ comentario del verificador se copian a `estudio_solicitudes` por trigger
 Un estudio tiene una fila en `estudio_consultas` por cada consulta (`rol`): `documento`, o `cabezote`
 y, si lleva, `remolque`. Cada placa se consulta por aparte en `POST /api/launch/car` con su propietario
 (el mismo u otro; CC, CE, NIT o TI, y `doc` numérico como pide LaunchCarIn), y el verificador las
-evalúa en un solo estudio: `estudio_hallazgos.consulta_id` dice a cuál pertenece cada hallazgo y
+evalúa en un solo estudio: cada hallazgo pertenece a una consulta (`consulta_id`) y
 `estudio_resultados.nivel_maximo` guarda el más grave. Falta confirmar con una prueba real que
 `/api/launch/car` acepte placas `R`/`S`: la especificación no lo aclara.
 
@@ -333,7 +334,7 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 
 ### 6.6 Archivos clave
 - Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`,
-  `20261105030000_estudios_consultas.sql`.
+  `20261105030000_estudios_consultas.sql`, `20261105040000_estudios_cierre_y_limpieza.sql`.
 - Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,resultado,traza,procesar,datos}.ts`.
 - API: `app/api/estudios/{sincronizar,reporte/[id]}/route.ts`.
 - Rutas: `app/(plataforma)/estudios/{solicitar/{documento,vehiculo},mis-solicitudes,verificar/
@@ -347,7 +348,7 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 
 1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
 2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
-   (todos, por orden de nombre; el último es `20261105030000_estudios_consultas`).
+   (todos, por orden de nombre; el último es `20261105040000_estudios_cierre_y_limpieza`).
 3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
@@ -372,8 +373,9 @@ que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
 ## 8. Estado actual (2026-11-04) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
-Cada push a `main` despliega. Las migraciones hasta `20261105020000` están aplicadas en producción
-(confirmado por el equipo); `20261105030000_estudios_consultas.sql` se aplica antes de la prueba de Estudios.
+Cada push a `main` despliega. Las migraciones hasta `20261105030000` están aplicadas en producción y las credenciales de TusDatos están
+en Vercel (confirmado por el equipo). Falta aplicar `20261105040000_estudios_cierre_y_limpieza.sql`, que
+borra los estudios de prueba: el 2026-11-04 solo había una solicitud simulada y se detiene si hay consultas reales.
 
 **En producción:**
 - ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
@@ -393,14 +395,14 @@ Cada push a `main` despliega. Las migraciones hasta `20261105020000` están apli
 
 **Módulos en construcción:** Financiero › Factura.
 
-**Pruebas:** `db:test` (78), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
+**Pruebas:** `db:test` (80), `test:fichas`, `test:anticipos`, `test:sicetac`, `test:cumplidos`,
 `test:estudios` (respuestas de TusDatos y cliente contra un servidor falso, sin créditos), `probar:waf`.
 
 **Pendiente:**
+- ⏭️ Simplificación opcional de Estudios: `estado` repite aprobado/rechazado de `decision`.
 - ⏭️ Decidir si quien gestiona usuarios (sin ser superadmin) solo puede otorgar módulos que él mismo
   tiene. Hoy puede darle cualquier módulo a otra cuenta, incluso una segunda suya.
-- ⏭️ Estudios, prueba real pendiente (ver §6.2): aplicar la migración, confirmar
-  `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` y los accesos por rol (`estudios.solicitar` +
+- ⏭️ Estudios, prueba real pendiente (ver §6.2): aplicar la migración y confirmar los accesos por rol (`estudios.solicitar` +
   `estudios.mis-solicitudes`; `estudios.verificar` + `estudios.historial`). Por confirmar con TusDatos real:
   que `/api/launch/car` acepte placas de remolque, la forma de `vehiculo`/`soat`/`revision`, si
   `report_json` sirve para vehículos y si el HTML del reporte se ve bien sin scripts.
