@@ -1,12 +1,15 @@
-import { AlertTriangle, FlaskConical } from "lucide-react";
+import { AlertTriangle, Coins, FlaskConical } from "lucide-react";
 import { obtenerClienteTusDatos } from "@/lib/estudios/tusdatos";
 import { cx } from "@/lib/utils";
 
 /**
- * Chip compacto con los créditos TusDatos: número restante, "de N comprados"
- * y barrita de progreso tintada según el porcentaje consumido. En Suspense
- * para no bloquear la página.
+ * Chip compacto con los créditos TusDatos restantes. Es un contador que va
+ * bajando hacia 0 conforme se consulten estudios. El color cambia según los
+ * umbrales de la cuenta (verde ≥ 100, ámbar 50–99, rojo < 50).
  */
+const UMBRAL_AMBAR = 100;
+const UMBRAL_ROJO = 50;
+
 export async function CreditosTusDatos() {
   const cliente = obtenerClienteTusDatos();
   if (!cliente) {
@@ -21,14 +24,11 @@ export async function CreditosTusDatos() {
   }
 
   let amount: number | null = null;
-  let totalComprado: number | null = null;
   try {
     const respuesta = (await cliente.creditos()) as unknown;
     const planes = Array.isArray(respuesta) ? respuesta : [respuesta];
     const plan = planes[0] as Record<string, unknown> | undefined;
     if (typeof plan?.amount === "number") amount = plan.amount;
-    if (typeof plan?.purchase_amount === "number")
-      totalComprado = plan.purchase_amount;
     if (amount === null)
       console.error("[tusdatos.creditos] respuesta inesperada:", respuesta);
   } catch (e) {
@@ -46,43 +46,21 @@ export async function CreditosTusDatos() {
     );
   }
 
-  const total = totalComprado ?? Math.max(amount, 1);
-  const porcentaje = Math.max(0, Math.min(100, (amount / total) * 100));
   const tono: Tono =
-    porcentaje < 10 ? "rojo" : porcentaje < 30 ? "ambar" : "verde";
+    amount < UMBRAL_ROJO ? "rojo" : amount < UMBRAL_AMBAR ? "ambar" : "verde";
 
   return (
     <div
-      className="bg-card inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]"
-      title={`${amount.toLocaleString("es-CO")} de ${total.toLocaleString("es-CO")} créditos (${Math.round(porcentaje)}%)`}
+      className="bg-card inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]"
+      title={`Créditos TusDatos restantes: ${amount.toLocaleString("es-CO")}`}
     >
+      <Coins
+        className={cx("size-3.5", TEXTO[tono])}
+        aria-hidden
+      />
       <span className="text-muted-foreground">Créditos</span>
-      <span className="tabular-nums">
-        <span className={cx("font-semibold", TEXTO[tono])}>
-          {amount.toLocaleString("es-CO")}
-        </span>
-        {totalComprado !== null && (
-          <span className="text-muted-foreground">
-            {" / "}
-            {totalComprado.toLocaleString("es-CO")}
-          </span>
-        )}
-      </span>
-      <div
-        className="bg-muted relative h-1 w-12 overflow-hidden rounded-full"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(porcentaje)}
-        aria-label={`${amount} créditos TusDatos restantes de ${total}`}
-      >
-        <div
-          className={cx("h-full rounded-full transition-all", BARRA[tono])}
-          style={{ width: `${porcentaje}%` }}
-        />
-      </div>
-      <span className={cx("tabular-nums font-medium", TEXTO[tono])}>
-        {Math.round(porcentaje)}%
+      <span className={cx("font-semibold tabular-nums", TEXTO[tono])}>
+        {amount.toLocaleString("es-CO")}
       </span>
     </div>
   );
@@ -91,11 +69,10 @@ export async function CreditosTusDatos() {
 /** Esqueleto mientras se consulta TusDatos. */
 export function CreditosTusDatosCargando() {
   return (
-    <div className="bg-card inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]">
+    <div className="bg-card inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]">
+      <Coins className="text-muted-foreground size-3.5" aria-hidden />
       <span className="text-muted-foreground">Créditos</span>
-      <span className="bg-muted inline-block h-3 w-16 animate-pulse rounded" />
-      <span className="bg-muted inline-block h-1 w-12 animate-pulse rounded-full" />
-      <span className="bg-muted inline-block h-3 w-6 animate-pulse rounded" />
+      <span className="bg-muted inline-block h-3 w-10 animate-pulse rounded" />
     </div>
   );
 }
@@ -106,11 +83,6 @@ const TEXTO: Record<Tono, string> = {
   verde: "text-primary",
   ambar: "text-amber-700",
   rojo: "text-destructive",
-};
-const BARRA: Record<Tono, string> = {
-  verde: "bg-primary",
-  ambar: "bg-amber-500",
-  rojo: "bg-destructive",
 };
 
 function Chip({
