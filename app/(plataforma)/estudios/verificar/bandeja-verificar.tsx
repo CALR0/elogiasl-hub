@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight, LoaderCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/field";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
+import { BotonDescargarEstudio } from "@/components/estudios/boton-descargar-estudio";
 import { PastillaNivel } from "@/components/estudios/pastilla-nivel";
 import type { FilaBandeja } from "@/lib/estudios/datos";
 import { fechaHora } from "@/lib/utils";
@@ -88,13 +89,18 @@ export function BandejaVerificar({ items }: { items: FilaBandeja[] }) {
                 {s.solicitante} · {fechaHora(s.fecha)}
               </p>
             </div>
-            <Link
-              href={`/estudios/verificar/${s.numero}`}
-              className="text-primary hover:bg-secondary inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-medium transition-colors"
-            >
-              Revisar
-              <ChevronRight className="size-4" aria-hidden />
-            </Link>
+            <div className="flex shrink-0 items-center gap-1">
+              {s.estado === "finalizada" && !s.simulada && (
+                <BotonDescargarEstudio numero={s.numero} />
+              )}
+              <Link
+                href={`/estudios/verificar/${s.numero}`}
+                className="text-primary hover:bg-secondary inline-flex h-9 items-center gap-1 rounded-lg px-3 text-sm font-medium transition-colors"
+              >
+                Revisar
+                <ChevronRight className="size-4" aria-hidden />
+              </Link>
+            </div>
           </li>
         ))}
       </ul>
