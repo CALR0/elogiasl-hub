@@ -30,6 +30,8 @@ export const ACCIONES_AUDITORIA: Record<string, string> = {
   "cumplido.migrar": "Migró un cumplido al RNDC",
   "trafico.consultar": "Consultó un vehículo o viaje en Control T",
   "estudio.solicitar": "Solicitó un estudio",
+  "estudio.consulta": "Resultado de una consulta de estudio",
+  "estudio.reporte": "Vio o descargó el reporte de un estudio",
   "estudio.aprobar": "Aprobó un estudio",
   "estudio.rechazar": "Rechazó un estudio",
 };

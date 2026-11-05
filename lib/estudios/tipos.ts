@@ -4,12 +4,7 @@ export type TipoDocumento = "CC" | "CE" | "NIT" | "PP" | "PPT" | "PLACA";
 
 /** Estado visible al solicitante. */
 export type EstadoEstudio =
-  | "enviada"
-  | "procesando"
-  | "finalizada"
-  | "aprobado"
-  | "rechazado"
-  | "error";
+  "enviada" | "procesando" | "finalizada" | "aprobado" | "rechazado" | "error";
 
 export type NivelHallazgo = "alto" | "medio" | "bajo" | "info" | "sin_hallazgo";
 
@@ -38,6 +33,36 @@ export interface SolicitudResumen {
   decididaAt: string | null;
 }
 
+/** Qué se consultó: un documento, o la placa del cabezote o del remolque. */
+export type RolConsulta = "documento" | "cabezote" | "remolque";
+
+export type EstadoConsulta = "procesando" | "finalizada" | "error";
+
+/** Una consulta a TusDatos dentro del estudio, con su propio resultado. */
+export interface ConsultaEstudio {
+  /** null en estudios anteriores a esta tabla (sin reporte). */
+  id: string | null;
+  rol: RolConsulta;
+  placa: string | null;
+  tipoDoc: string | null;
+  documento: string | null;
+  estado: EstadoConsulta;
+  nivel: NivelHallazgo | null;
+  nombreConsultado: string | null;
+  fuentes: Record<string, ResultadoFuente>;
+  hallazgos: Hallazgo[];
+  datos: Record<string, unknown>;
+  mensajeError: string | null;
+  tieneReporte: boolean;
+  simulada: boolean;
+}
+
+export interface EventoEstudio {
+  fecha: string;
+  tipo: "info" | "ok" | "error";
+  texto: string;
+}
+
 /** Vista del verificador: resumen + resultados. */
 export interface Estudio {
   id: string;
@@ -49,20 +74,12 @@ export interface Estudio {
   fecha: string;
   estado: EstadoEstudio;
   nivel: NivelHallazgo | null;
-  fuentes: Record<string, ResultadoFuente>;
-  hallazgos: Hallazgo[];
+  consultas: ConsultaEstudio[];
+  eventos: EventoEstudio[];
   decision: Decision;
   comentario: string | null;
   simulada: boolean;
 }
-
-export const PESO_NIVEL: Record<NivelHallazgo, number> = {
-  alto: 0,
-  medio: 1,
-  bajo: 2,
-  info: 3,
-  sin_hallazgo: 4,
-};
 
 export const ESTADOS: Record<
   EstadoEstudio,

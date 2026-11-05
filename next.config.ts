@@ -11,7 +11,6 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
 ];
 
@@ -41,6 +40,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // Esta cabecera reemplazaría la de la respuesta: el reporte de TusDatos
+      // (HTML de un tercero) trae su propia política con sandbox.
+      {
+        source: "/((?!api/estudios/reporte/).*)",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
       // Nada de la API se guarda en cachés intermedias
       {
         source: "/api/:path*",

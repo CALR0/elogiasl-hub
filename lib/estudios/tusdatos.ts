@@ -1,44 +1,34 @@
 import "server-only";
+import type { RespuestaResultado } from "./resultado.ts";
+import { trazar, trazaEnvio, trazaRespuesta } from "./traza.ts";
 
 /**
- * Cliente de TusDatos (api.tusdatos.co). Solo servidor. Se construye con
+ * Cliente de TusDatos (ver docs.tusdatos.co). Solo servidor. Se construye con
  * credenciales de la cuenta de Elogia desde las variables de entorno.
  *
- * Flujo típico (consulta individual):
- *  1. POST /api/launch → { jobid }
- *  2. GET  /api/results/{jobid} cada ~5s hasta que `estado` deje de ser
- *     "procesando" (responde 424 mientras tanto).
- *  3. Resultado final trae `id` (reportId), `hallazgos` (nivel máximo),
- *     `results` (mapa fuente → true/false/"Error") y `nombre`.
- *
- * Vehículo (combinado cabezote + propietarios + remolque): POST /api/launch/car.
+ * Flujo de una consulta:
+ *  1. POST /api/launch (documento) o POST /api/launch/car (cada placa) → jobid,
+ *     con vigencia de 2 horas.
+ *  2. GET /api/results/{jobid}: 207 en proceso, 200 finalizado, 404 job vencido
+ *     o inexistente, 500 consulta fallida. Tarda en promedio un minuto.
+ *  3. Con el `id` del resultado: GET /api/report_json/{id} (detalle de hallazgos)
+ *     y los reportes en HTML y PDF.
+ * Cada petición deja una línea en el log del servidor (lib/estudios/traza.ts).
  */
 
 export type TusDatosDocType =
-  | "CC"
-  | "CE"
-  | "NIT"
-  | "PP"
-  | "PPT"
-  | "INT"
-  | "NOMBRE";
+  "CC" | "CE" | "NIT" | "PP" | "PPT" | "INT" | "NOMBRE";
 
 export type TusDatosOwnerDocType = "CC" | "CE" | "NIT" | "TI";
 
-export type TusDatosHallazgoNivel = "alto" | "medio" | "bajo" | "info" | "";
-
 export class TusDatosError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly body: unknown,
-  ) {
+  readonly status: number;
+  readonly body: unknown;
+  constructor(message: string, status: number, body: unknown) {
     super(message);
     this.name = "TusDatosError";
-  }
-  /** 424: la consulta aún no está lista. */
-  get noLista() {
-    return this.status === 424;
+    this.status = status;
+    this.body = body;
   }
 }
 
@@ -55,22 +45,22 @@ export interface LanzamientoIndividual {
 export interface LanzamientoVehiculo {
   placa: string;
   tdoc: TusDatosOwnerDocType;
-  doc: string;
+  /** Numérico, sin puntos ni comas (LaunchCarIn). */
+  doc: number;
 }
 
-export interface EstadoConsulta {
-  /** reportId: se usa para /api/v2/report_json, /api/retry, etc. */
-  id: string;
-  estado: "procesando" | "finalizado" | "error";
-  error: boolean;
-  errores?: string[];
-  hallazgo: boolean;
-  hallazgos: TusDatosHallazgoNivel;
-  nombre?: string;
-  typedoc?: string;
-  /** true = hallazgo, false = sin hallazgo, "Error" = la fuente falló */
-  results?: Record<string, boolean | "Error">;
+/** Respuesta de POST /api/launch/car: además del job trae datos del vehículo. */
+export interface LanzamientoVehiculoOut {
+  jobid: string;
+  vehiculo?: unknown;
+  soat?: unknown;
+  revision?: unknown;
 }
+
+export type EstadoJob =
+  | { fase: "procesando"; cuerpo: RespuestaResultado }
+  | { fase: "finalizado"; cuerpo: RespuestaResultado }
+  | { fase: "error"; mensaje: string };
 
 export interface TusDatosConfig {
   usuario: string;
@@ -82,69 +72,152 @@ export interface TusDatosConfig {
 /** Base oficial del API de TusDatos (ver docs.tusdatos.co). */
 export const TUSDATOS_BASE_URL_DEFAULT = "https://dash-board.tusdatos.co";
 
+const detalleError = (body: unknown, respaldo: string) => {
+  if (body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    const d = b.error ?? b.detail ?? b.estado;
+    if (d) return typeof d === "string" ? d : JSON.stringify(d);
+  }
+  return respaldo;
+};
+
 export function clienteTusDatos({
   usuario,
   clave,
   baseUrl = TUSDATOS_BASE_URL_DEFAULT,
   timeoutMs = 30_000,
 }: TusDatosConfig) {
-  const auth =
-    "Basic " + Buffer.from(`${usuario}:${clave}`).toString("base64");
+  const auth = "Basic " + Buffer.from(`${usuario}:${clave}`).toString("base64");
 
-  async function pedir<T>(ruta: string, init: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${baseUrl}${ruta}`, {
-      ...init,
-      cache: "no-store",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        Accept: "application/json",
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        Authorization: auth,
-        ...init.headers,
-      },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      const detalle =
-        (body &&
-          typeof body === "object" &&
-          ("error" in body
-            ? (body as { error: unknown }).error
-            : "detail" in body
-              ? (body as { detail: unknown }).detail
-              : null)) ||
-        res.statusText;
-      throw new TusDatosError(
-        `TusDatos ${res.status} en ${ruta}: ${JSON.stringify(detalle)}`,
-        res.status,
+  /** Una petición con su línea de log. `ref` la relaciona con la consulta. */
+  async function llamar(
+    ruta: string,
+    { cuerpo, ref }: { cuerpo?: Record<string, unknown>; ref?: string } = {},
+  ) {
+    const inicio = Date.now();
+    const metodo = cuerpo ? "POST" : "GET";
+    try {
+      const res = await fetch(`${baseUrl}${ruta}`, {
+        method: metodo,
+        cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          Accept: "application/json",
+          ...(cuerpo ? { "Content-Type": "application/json" } : {}),
+          Authorization: auth,
+        },
+        ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      trazar("tusdatos.http", {
+        ref,
+        metodo,
+        ruta,
+        status: res.status,
+        ms: Date.now() - inicio,
+        envio: trazaEnvio(cuerpo),
+        respuesta: trazaRespuesta(body),
+      });
+      return {
+        status: res.status,
+        ok: res.ok,
+        statusText: res.statusText,
         body,
-      );
+      };
+    } catch (e) {
+      trazar("tusdatos.http_fallo", {
+        ref,
+        metodo,
+        ruta,
+        ms: Date.now() - inicio,
+        envio: trazaEnvio(cuerpo),
+        error: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     }
-    return (await res.json()) as T;
+  }
+
+  async function pedir<T>(
+    ruta: string,
+    opciones?: { cuerpo?: Record<string, unknown>; ref?: string },
+  ): Promise<T> {
+    const r = await llamar(ruta, opciones);
+    if (!r.ok)
+      throw new TusDatosError(
+        `TusDatos respondió ${r.status}: ${detalleError(r.body, r.statusText)}`,
+        r.status,
+        r.body,
+      );
+    return r.body as T;
   }
 
   return {
-    /** Lanza una consulta individual. Devuelve jobid (vigencia 2h). */
+    /** Lanza una consulta individual. Devuelve jobid (vigencia 2 h). */
     lanzarIndividual(
       input: LanzamientoIndividual,
-    ): Promise<{ jobid: string; typedoc: string; validado?: boolean }> {
-      return pedir("/api/launch", {
-        method: "POST",
-        body: JSON.stringify(input),
-      });
+      ref?: string,
+    ): Promise<{ jobid: string; validado?: boolean }> {
+      return pedir("/api/launch", { cuerpo: { ...input }, ref });
     },
-    /** Lanza una consulta de vehículo + propietario. */
+    /** Lanza la consulta de una placa (cabezote o remolque) con su propietario. */
     lanzarVehiculo(
       input: LanzamientoVehiculo,
-    ): Promise<{ jobid: string; placa: string; typedoc: string }> {
-      return pedir("/api/launch/car", {
-        method: "POST",
-        body: JSON.stringify(input),
-      });
+      ref?: string,
+    ): Promise<LanzamientoVehiculoOut> {
+      return pedir("/api/launch/car", { cuerpo: { ...input }, ref });
     },
-    /** Estado de la consulta. Mientras procesa, devuelve 424 (noLista). */
-    estado(jobid: string): Promise<EstadoConsulta> {
-      return pedir(`/api/results/${encodeURIComponent(jobid)}`);
+    /** Estado de un job. Un fallo de red o un 401 lanzan error: se reintenta luego. */
+    async estado(jobid: string, ref?: string): Promise<EstadoJob> {
+      const r = await llamar(`/api/results/${encodeURIComponent(jobid)}`, {
+        ref,
+      });
+      const cuerpo = (r.body ?? {}) as RespuestaResultado;
+      if (r.status === 207) return { fase: "procesando", cuerpo };
+      if (r.status === 200)
+        return cuerpo.estado === "finalizado"
+          ? { fase: "finalizado", cuerpo }
+          : cuerpo.estado === "procesando"
+            ? { fase: "procesando", cuerpo }
+            : {
+                fase: "error",
+                mensaje: detalleError(cuerpo, "Respuesta no reconocida."),
+              };
+      if (r.status === 404 || r.status === 500)
+        return {
+          fase: "error",
+          mensaje: detalleError(r.body, `TusDatos respondió ${r.status}.`),
+        };
+      throw new TusDatosError(
+        `TusDatos respondió ${r.status} al consultar el job.`,
+        r.status,
+        r.body,
+      );
+    },
+    /** Reporte en JSON, con el detalle de hallazgos (`dict_hallazgos`). */
+    reporteJson(reportId: string, ref?: string): Promise<unknown> {
+      return pedir(`/api/report_json/${encodeURIComponent(reportId)}`, { ref });
+    },
+    /**
+     * Reporte en HTML o PDF: devuelve la respuesta tal cual para pasarla al
+     * navegador (el PDF responde 202 mientras se construye).
+     */
+    async descargar(ruta: string, ref?: string): Promise<Response> {
+      const inicio = Date.now();
+      const res = await fetch(`${baseUrl}${ruta}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { Authorization: auth },
+      });
+      trazar("tusdatos.http", {
+        ref,
+        metodo: "GET",
+        ruta,
+        status: res.status,
+        ms: Date.now() - inicio,
+        tipo: res.headers.get("content-type"),
+        tamano: res.headers.get("content-length"),
+      });
+      return res;
     },
     /**
      * Créditos del usuario. TusDatos devuelve un ARRAY con los planes:
@@ -180,39 +253,4 @@ export function obtenerClienteTusDatos(): ClienteTusDatos | null {
     clave: process.env.TUSDATOS_CLAVE!,
     baseUrl: process.env.TUSDATOS_BASE_URL || TUSDATOS_BASE_URL_DEFAULT,
   });
-}
-
-/**
- * Espera hasta que la consulta esté lista o se agote el tiempo. Devuelve el
- * último estado conocido. 424 significa "aún procesa" — se espera y reintenta.
- */
-export async function esperarConsulta(
-  cliente: ClienteTusDatos,
-  jobid: string,
-  { maxEsperaMs = 90_000, intervaloMs = 4_000 }: { maxEsperaMs?: number; intervaloMs?: number } = {},
-): Promise<EstadoConsulta> {
-  const limite = Date.now() + maxEsperaMs;
-  let ultimo: EstadoConsulta | null = null;
-  while (Date.now() < limite) {
-    try {
-      const estado = await cliente.estado(jobid);
-      ultimo = estado;
-      if (estado.estado !== "procesando") return estado;
-    } catch (e) {
-      if (e instanceof TusDatosError && e.noLista) {
-        // aún no lista, seguir esperando
-      } else {
-        throw e;
-      }
-    }
-    await new Promise((r) => setTimeout(r, intervaloMs));
-  }
-  if (!ultimo) {
-    throw new TusDatosError(
-      "La consulta aún no está lista tras el tiempo de espera.",
-      424,
-      null,
-    );
-  }
-  return ultimo;
 }

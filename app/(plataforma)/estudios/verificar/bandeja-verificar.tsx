@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight, LoaderCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/field";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import { PastillaNivel } from "@/components/estudios/pastilla-nivel";
@@ -58,10 +58,17 @@ export function BandejaVerificar({ items }: { items: FilaBandeja[] }) {
             key={s.id}
             className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6 sm:px-5"
           >
-            <PastillaNivel nivel={s.nivel} />
+            {s.estado === "procesando" ? (
+              <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-xs font-medium">
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                En proceso
+              </span>
+            ) : (
+              <PastillaNivel nivel={s.nivel} />
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-mono text-muted-foreground">
+                <span className="text-muted-foreground font-mono">
                   SOL-{String(s.numero).padStart(6, "0")}
                 </span>
                 <span className="text-muted-foreground">

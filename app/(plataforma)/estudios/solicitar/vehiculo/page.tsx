@@ -5,6 +5,9 @@ import { Encabezado } from "@/components/plataforma/encabezado";
 import { requirePermiso } from "@/lib/auth";
 import { FormularioVehiculo } from "./formulario-vehiculo";
 
+// Lanzar las consultas en TusDatos corre dentro de la acción de esta página
+export const maxDuration = 60;
+
 export const metadata: Metadata = { title: "Consulta por vehículo" };
 
 export default async function SolicitarVehiculoPage() {

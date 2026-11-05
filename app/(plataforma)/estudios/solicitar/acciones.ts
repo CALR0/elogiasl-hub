@@ -12,15 +12,47 @@ import {
   crearSolicitud,
   entradaDocumento,
   entradaVehiculo,
+  type ResultadoCreacion,
 } from "@/lib/estudios/procesar";
+import { enmascarar } from "@/lib/estudios/traza.ts";
 
 const MODULO = "estudios.solicitar";
 
-export type Resultado<T extends Record<string, unknown> = Record<string, never>> =
+export type Resultado<
+  T extends Record<string, unknown> = Record<string, never>,
+> =
   | { ok: true; datos: T }
   | { ok: false; error: string; campos?: Record<string, string> };
 
 type DatosSalida = { numero: number; id: string; simulada: boolean };
+
+/** Lo que se lanzó en TusDatos (nunca el documento completo). */
+const trazaConsultas = (salida: ResultadoCreacion) =>
+  salida.consultas.map((c) => ({
+    rol: c.rol,
+    placa: c.placa,
+    tipo_documento: c.tipoDoc,
+    documento: enmascarar(c.documento),
+    jobid: c.jobid,
+    ...(c.error && { error: c.error }),
+  }));
+
+/** Si ninguna consulta se pudo lanzar, el usuario lo sabe en el momento. */
+const mensajeFallida = (salida: ResultadoCreacion) =>
+  salida.consultas.find((c) => c.error)?.error ??
+  "No fue posible enviar la consulta.";
+
+const respuesta = (salida: ResultadoCreacion): Resultado<DatosSalida> =>
+  salida.fallida
+    ? { ok: false, error: mensajeFallida(salida) }
+    : {
+        ok: true,
+        datos: {
+          numero: salida.numero,
+          id: salida.id,
+          simulada: salida.simulada,
+        },
+      };
 
 /** Solicita un estudio de documento (persona o empresa). */
 export async function solicitarDocumento(
@@ -47,8 +79,9 @@ export async function solicitarDocumento(
       accion: "estudio.solicitar",
       entidad: "estudio",
       entidadId: String(salida.numero),
-      resultado: "ok",
+      resultado: salida.fallida ? "error" : "ok",
       detalle: {
+        consultas: trazaConsultas(salida),
         tipo: parse.data.tipo,
         modulo: "documento",
         simulada: salida.simulada,
@@ -56,7 +89,7 @@ export async function solicitarDocumento(
     });
     revalidatePath("/estudios/mis-solicitudes");
     revalidatePath("/estudios/verificar");
-    return { ok: true, datos: salida };
+    return respuesta(salida);
   } catch (e) {
     const mensaje =
       e instanceof Error ? e.message : "No fue posible enviar la solicitud.";
@@ -97,8 +130,9 @@ export async function solicitarVehiculo(
       accion: "estudio.solicitar",
       entidad: "estudio",
       entidadId: String(salida.numero),
-      resultado: "ok",
+      resultado: salida.fallida ? "error" : "ok",
       detalle: {
+        consultas: trazaConsultas(salida),
         placa: parse.data.placa,
         modulo: "vehiculo",
         remolque: parse.data.incluirRemolque ? parse.data.placaRemolque : null,
@@ -107,7 +141,7 @@ export async function solicitarVehiculo(
     });
     revalidatePath("/estudios/mis-solicitudes");
     revalidatePath("/estudios/verificar");
-    return { ok: true, datos: salida };
+    return respuesta(salida);
   } catch (e) {
     const mensaje =
       e instanceof Error ? e.message : "No fue posible enviar la solicitud.";

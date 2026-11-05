@@ -3,17 +3,21 @@ import { getUsuarioActual } from "@/lib/auth";
 import { MODO_DEMO } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 import { almacenEstudios, aResumen } from "./demo";
+import { PESO_NIVEL } from "./resultado.ts";
 import type {
+  ConsultaEstudio,
   Decision,
+  EstadoConsulta,
   EstadoEstudio,
   Estudio,
+  EventoEstudio,
   Hallazgo,
   NivelHallazgo,
   ResultadoFuente,
+  RolConsulta,
   SolicitudResumen,
   TipoDocumento,
 } from "./tipos";
-import { PESO_NIVEL } from "./tipos";
 
 /**
  * Lecturas del módulo Estudios. Todo pasa por RLS: el solicitante solo verá
@@ -26,8 +30,12 @@ function descripcion(fila: {
   documento: string | null;
   nombre: string | null;
   placa: string | null;
+  placa_remolque?: string | null;
 }) {
-  if (fila.tipo_documento === "PLACA") return `Placa ${fila.placa ?? "—"}`;
+  if (fila.tipo_documento === "PLACA") {
+    const remolque = fila.placa_remolque ? ` + ${fila.placa_remolque}` : "";
+    return `Placa ${fila.placa ?? "—"}${remolque}`;
+  }
   if (fila.tipo_documento === "PP") {
     return fila.nombre ? `PP · ${fila.nombre}` : `PP · ${fila.documento ?? ""}`;
   }
@@ -53,7 +61,7 @@ export async function listarMisSolicitudes(): Promise<SolicitudResumen[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, estado, created_at, decision, comentario_verificador, decidida_at",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, created_at, decision, comentario_verificador, decidida_at",
     )
     .eq("created_by", usuario.id)
     .order("created_at", { ascending: false });
@@ -96,6 +104,7 @@ interface FilaPendienteRaw {
   documento: string | null;
   nombre: string | null;
   placa: string | null;
+  placa_remolque: string | null;
   estado: EstadoEstudio;
   decision: Decision;
   simulada: boolean;
@@ -137,7 +146,7 @@ export async function listarPendientes(): Promise<FilaBandeja[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
     )
     .eq("decision", "pendiente")
     .neq("estado", "error")
@@ -162,7 +171,7 @@ export async function listarHistorial(): Promise<FilaBandeja[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
     )
     .neq("decision", "pendiente")
     .order("decidida_at", { ascending: false });
@@ -173,16 +182,24 @@ export async function listarHistorial(): Promise<FilaBandeja[]> {
   return (data as unknown as FilaPendienteRaw[]).map(construirFila);
 }
 
+const ORDEN_ROL: Record<RolConsulta, number> = {
+  documento: 0,
+  cabezote: 1,
+  remolque: 2,
+};
+
 /** Detalle completo del estudio para el verificador. */
 export async function obtenerEstudio(numero: number): Promise<Estudio | null> {
   if (MODO_DEMO) {
-    return almacenEstudios().solicitudes.find((s) => s.numero === numero) ?? null;
+    return (
+      almacenEstudios().solicitudes.find((s) => s.numero === numero) ?? null
+    );
   }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, estado, decision, comentario_verificador, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo, fuentes ), estudio_hallazgos ( nivel, fuente, codigo, titulo, descripcion )",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, tipo_doc_propietario, estado, decision, comentario_verificador, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo, fuentes )",
     )
     .eq("numero", numero)
     .maybeSingle();
@@ -191,14 +208,93 @@ export async function obtenerEstudio(numero: number): Promise<Estudio | null> {
     return null;
   }
   const d = data as unknown as FilaPendienteRaw & {
+    tipo_doc_propietario: string | null;
     comentario_verificador: string | null;
     estudio_resultados: {
       nombre_consultado: string | null;
       nivel_maximo: NivelHallazgo;
       fuentes: Record<string, ResultadoFuente>;
     } | null;
-    estudio_hallazgos: Hallazgo[];
   };
+
+  const [consultas, hallazgos, eventos] = await Promise.all([
+    supabase
+      .from("estudio_consultas")
+      .select(
+        "id, rol, placa, tipo_doc, documento, estado, nivel, nombre_consultado, fuentes, datos, mensaje_error, report_id, simulada",
+      )
+      .eq("solicitud_id", d.id),
+    supabase
+      .from("estudio_hallazgos")
+      .select("consulta_id, nivel, fuente, codigo, titulo, descripcion")
+      .eq("solicitud_id", d.id),
+    supabase
+      .from("estudio_eventos")
+      .select("fecha, tipo, texto")
+      .eq("solicitud_id", d.id)
+      .order("fecha", { ascending: true }),
+  ]);
+  for (const r of [consultas, hallazgos, eventos])
+    if (r.error) console.error("[estudios]", r.error);
+
+  type FilaHallazgo = Hallazgo & { consulta_id: string | null };
+  const listaHallazgos = (hallazgos.data ?? []) as FilaHallazgo[];
+  const filas = (consultas.data ?? []) as {
+    id: string;
+    rol: RolConsulta;
+    placa: string | null;
+    tipo_doc: string;
+    documento: string | null;
+    estado: EstadoConsulta;
+    nivel: NivelHallazgo | null;
+    nombre_consultado: string | null;
+    fuentes: Record<string, ResultadoFuente>;
+    datos: Record<string, unknown>;
+    mensaje_error: string | null;
+    report_id: string | null;
+    simulada: boolean;
+  }[];
+
+  const lista: ConsultaEstudio[] = filas
+    .map((c) => ({
+      id: c.id,
+      rol: c.rol,
+      placa: c.placa,
+      tipoDoc: c.tipo_doc,
+      documento: c.documento,
+      estado: c.estado,
+      nivel: c.nivel,
+      nombreConsultado: c.nombre_consultado,
+      fuentes: c.fuentes ?? {},
+      hallazgos: listaHallazgos.filter((h) => h.consulta_id === c.id),
+      datos: c.datos ?? {},
+      mensajeError: c.mensaje_error,
+      tieneReporte: Boolean(c.report_id),
+      simulada: c.simulada,
+    }))
+    .sort((a, b) => ORDEN_ROL[a.rol] - ORDEN_ROL[b.rol]);
+
+  // Estudios anteriores a estudio_consultas: sus resultados como una sola consulta
+  if (!lista.length) {
+    const esVehiculo = d.tipo_documento === "PLACA";
+    lista.push({
+      id: null,
+      rol: esVehiculo ? "cabezote" : "documento",
+      placa: d.placa,
+      tipoDoc: esVehiculo ? d.tipo_doc_propietario : d.tipo_documento,
+      documento: d.documento,
+      estado: d.estado === "error" ? "error" : "finalizada",
+      nivel: d.estudio_resultados?.nivel_maximo ?? null,
+      nombreConsultado: d.estudio_resultados?.nombre_consultado ?? null,
+      fuentes: d.estudio_resultados?.fuentes ?? {},
+      hallazgos: listaHallazgos,
+      datos: {},
+      mensajeError: null,
+      tieneReporte: false,
+      simulada: d.simulada,
+    });
+  }
+
   return {
     id: d.id,
     numero: d.numero,
@@ -209,8 +305,8 @@ export async function obtenerEstudio(numero: number): Promise<Estudio | null> {
     fecha: d.created_at,
     estado: d.estado,
     nivel: d.estudio_resultados?.nivel_maximo ?? null,
-    fuentes: d.estudio_resultados?.fuentes ?? {},
-    hallazgos: d.estudio_hallazgos ?? [],
+    consultas: lista,
+    eventos: (eventos.data ?? []) as EventoEstudio[],
     decision: d.decision,
     comentario: d.comentario_verificador,
     simulada: d.simulada,

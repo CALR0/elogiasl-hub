@@ -22,7 +22,8 @@
     "test:anticipos": "node --experimental-strip-types --no-warnings scripts/probar-anticipos.ts",
     "probar:sicetac": "node --experimental-strip-types --no-warnings scripts/probar-sicetac.ts",
     "test:sicetac": "node --experimental-strip-types --no-warnings scripts/probar-sicetac-xml.ts",
-    "test:cumplidos": "node --experimental-strip-types --no-warnings scripts/probar-cumplidos.ts"
+    "test:cumplidos": "node --experimental-strip-types --no-warnings scripts/probar-cumplidos.ts",
+    "test:estudios": "node --conditions=react-server --experimental-strip-types --no-warnings scripts/probar-estudios.ts"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ActualizadorEstudios } from "@/components/estudios/actualizador-estudios";
 import { Encabezado } from "@/components/plataforma/encabezado";
 import { requirePermiso } from "@/lib/auth";
 import { listarMisSolicitudes } from "@/lib/estudios/datos";
@@ -16,6 +17,9 @@ export default async function MisSolicitudesPage() {
         titulo="Mis solicitudes"
         descripcion="Estado y decisión del verificador para las solicitudes que enviaste."
       />
+      {solicitudes.some((s) => s.estado === "procesando") && (
+        <ActualizadorEstudios />
+      )}
       <MisSolicitudes items={solicitudes} />
     </div>
   );

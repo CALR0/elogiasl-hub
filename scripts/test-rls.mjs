@@ -464,5 +464,60 @@ await limpiarOverrides();
 r = await as(ADMIN, `select public.tiene_acceso('${ANTICIPOS}') as a`);
 check("superadmin sigue con acceso total", r.rows?.[0].a === true, r);
 
+// Estudios: cada consulta de un estudio (cabezote, remolque) y quién la ve
+const ROL_SOLICITA = await nuevoRol("Solicita estudios", [
+  "estudios.solicitar",
+  "estudios.mis-solicitudes",
+]);
+const ROL_VERIFICA = await nuevoRol("Verifica estudios", ["estudios.verificar"]);
+const SOLICITA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const VERIFICA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+for (const [id, rol] of [
+  [SOLICITA, ROL_SOLICITA],
+  [VERIFICA, ROL_VERIFICA],
+])
+  await sinSesion(`insert into auth.users (id, email, raw_app_meta_data)
+    values ('${id}', '${id.slice(0, 1)}@estudios.test', '${JSON.stringify({ rol_id: rol })}')`);
+const {
+  rows: [{ id: SOLICITUD }],
+} = await sinSesion(`insert into public.estudio_solicitudes
+  (created_by, tipo_documento, documento, placa, tipo_doc_propietario, placa_remolque,
+   tipo_doc_propietario_remolque, documento_propietario_remolque, autorizacion_titular)
+  values ('${SOLICITA}', 'PLACA', '111', 'ABC123', 'CC', 'R12345', 'TI', '222', true)
+  returning id`);
+check("el propietario del remolque admite los mismos tipos (TI)", Boolean(SOLICITUD));
+const insertarConsulta = (rol, placa) =>
+  sinSesion(`insert into public.estudio_consultas (solicitud_id, rol, placa, tipo_doc, documento)
+    values ('${SOLICITUD}', '${rol}', '${placa}', 'CC', '111') returning id`);
+const {
+  rows: [{ id: CONSULTA }],
+} = await insertarConsulta("cabezote", "ABC123");
+await insertarConsulta("remolque", "R12345");
+await sinSesion(`insert into public.estudio_hallazgos
+  (solicitud_id, consulta_id, nivel, fuente, codigo, titulo, descripcion)
+  values ('${SOLICITUD}', '${CONSULTA}', 'alto', 'F', 'c', 't', 'd')`);
+let repetida = null;
+try {
+  await insertarConsulta("remolque", "R99999");
+} catch (e) {
+  repetida = e.message;
+}
+check("un estudio no repite cabezote ni remolque", Boolean(repetida), repetida);
+
+r = await as(SOLICITA, "select * from public.estudio_consultas");
+check("quien solicita no ve las consultas", ok(r, 0), r);
+r = await as(SOLICITA, "select * from public.estudio_hallazgos");
+check("quien solicita no ve los hallazgos", ok(r, 0), r);
+r = await as(SOLICITA, "select estado, placa_remolque from public.estudio_solicitudes");
+check("quien solicita sí ve su solicitud", ok(r, 1), r);
+r = await as(VERIFICA, "select rol from public.estudio_consultas order by rol");
+check("el verificador ve las dos consultas del estudio", ok(r, 2), r);
+r = await as(VERIFICA, "select consulta_id from public.estudio_hallazgos");
+check("y a qué consulta pertenece cada hallazgo", r.rows?.[0]?.consulta_id === CONSULTA, r);
+r = await as(VERIFICA, `update public.estudio_consultas set estado='finalizada' where id='${CONSULTA}'`);
+check("nadie escribe consultas desde el navegador", err(r), r);
+r = await as(SIN_NADA, "select * from public.estudio_consultas");
+check("sin acceso a Estudios no se ven consultas", ok(r, 0), r);
+
 console.log(fallas ? `\n${fallas} prueba(s) fallaron` : "\nTodo en orden");
 process.exit(fallas ? 1 : 0);

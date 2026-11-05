@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { ActualizadorEstudios } from "@/components/estudios/actualizador-estudios";
 import { Encabezado } from "@/components/plataforma/encabezado";
 import {
   CreditosTusDatos,
@@ -25,6 +26,9 @@ export default async function VerificarEstudiosPage() {
           <CreditosTusDatos />
         </Suspense>
       </Encabezado>
+      {pendientes.some((s) => s.estado === "procesando") && (
+        <ActualizadorEstudios />
+      )}
       <BandejaVerificar items={pendientes} />
     </div>
   );

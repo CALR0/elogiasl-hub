@@ -10,9 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const MODULO = "estudios.verificar";
 
-export type Resultado =
-  | { ok: true }
-  | { ok: false; error: string };
+export type Resultado = { ok: true } | { ok: false; error: string };
 
 const Decision = z.object({
   numero: z.number().int().positive(),
@@ -37,6 +35,9 @@ async function decidir(
     if (estudio.decision !== "pendiente") {
       return { ok: false, error: "El estudio ya fue decidido." };
     }
+    if (estudio.estado !== "finalizada") {
+      return { ok: false, error: "El estudio aún no está listo para decidir." };
+    }
     estudio.decision = decision;
     estudio.comentario = comentario ?? null;
     estudio.estado = decision;
@@ -45,7 +46,7 @@ async function decidir(
     const admin = createAdminClient();
     const { data: solicitud, error: errSol } = await admin
       .from("estudio_solicitudes")
-      .select("id, decision")
+      .select("id, decision, estado")
       .eq("numero", numero)
       .maybeSingle();
     if (errSol || !solicitud) {
@@ -53,6 +54,9 @@ async function decidir(
     }
     if (solicitud.decision !== "pendiente") {
       return { ok: false, error: "El estudio ya fue decidido." };
+    }
+    if (solicitud.estado !== "finalizada") {
+      return { ok: false, error: "El estudio aún no está listo para decidir." };
     }
     // Actualizar resultados → el trigger copia decisión/comentario/estado a la solicitud.
     const { error } = await admin

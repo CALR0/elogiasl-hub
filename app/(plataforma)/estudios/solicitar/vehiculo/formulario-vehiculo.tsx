@@ -222,11 +222,7 @@ export function FormularioVehiculo() {
                   >
                     <Input
                       id="documentoPropietarioRemolque"
-                      inputMode={
-                        datos.tipoPropietarioRemolque === "PP"
-                          ? "text"
-                          : "numeric"
-                      }
+                      inputMode="numeric"
                       autoComplete="off"
                       value={datos.documentoPropietarioRemolque}
                       onChange={(e) =>
@@ -246,8 +242,8 @@ export function FormularioVehiculo() {
             )}
 
             <p className="text-muted-foreground text-xs">
-              Se hace una consulta combinada: cabezote, remolque y cada
-              propietario consumen créditos por separado.
+              Cabezote y remolque se consultan por separado, cada placa con su
+              propietario, y consumen créditos por separado.
             </p>
           </div>
         )}

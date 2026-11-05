@@ -21,16 +21,10 @@ export const TIPOS_DOC_PROPIETARIO = [
   { valor: "TI", corto: "TI", largo: "Tarjeta de identidad" },
 ] as const;
 
-export const TIPOS_DOC_REMOLQUE = [
-  { valor: "CC", corto: "CC", largo: "Cédula de ciudadanía" },
-  { valor: "CE", corto: "CE", largo: "Cédula de extranjería" },
-  { valor: "NIT", corto: "NIT", largo: "NIT de empresa" },
-  { valor: "PPT", corto: "PPT", largo: "Permiso por protección temporal" },
-  { valor: "PP", corto: "Pasaporte", largo: "Pasaporte" },
-] as const;
+/** El remolque es otra placa: se consulta igual que el cabezote. */
+export const TIPOS_DOC_REMOLQUE = TIPOS_DOC_PROPIETARIO;
 
-export type TipoDocumentoFormulario =
-  (typeof TIPOS_DOCUMENTO)[number]["valor"];
+export type TipoDocumentoFormulario = (typeof TIPOS_DOCUMENTO)[number]["valor"];
 export type TipoDocPropietario =
   (typeof TIPOS_DOC_PROPIETARIO)[number]["valor"];
 export type TipoDocRemolque = (typeof TIPOS_DOC_REMOLQUE)[number]["valor"];
@@ -95,13 +89,16 @@ export const consultaVehiculoSchema = z
       .string()
       .trim()
       .toUpperCase()
-      .regex(PLACA_REGEX, "Placa inválida. Formato ABC123 (carro) o ABC12D (moto)."),
+      .regex(
+        PLACA_REGEX,
+        "Placa inválida. Formato ABC123 (carro) o ABC12D (moto).",
+      ),
     tipoPropietario: z.enum(["CC", "CE", "NIT", "TI"]),
     documentoPropietario: soloDigitos,
     incluirRemolque: z.boolean(),
     placaRemolque: z.string().trim().toUpperCase(),
     remolqueMismoPropietario: z.boolean(),
-    tipoPropietarioRemolque: z.enum(["CC", "CE", "NIT", "PPT", "PP"]),
+    tipoPropietarioRemolque: z.enum(["CC", "CE", "NIT", "TI"]),
     documentoPropietarioRemolque: z.string().trim(),
     autorizacion,
   })
@@ -115,19 +112,12 @@ export const consultaVehiculoSchema = z
       });
     }
     if (d.remolqueMismoPropietario) return;
-    const doc = d.documentoPropietarioRemolque;
-    const valido =
-      d.tipoPropietarioRemolque === "PP"
-        ? /^[A-Za-z0-9]{5,15}$/.test(doc)
-        : /^\d{5,12}$/.test(doc);
-    if (!valido) {
+    if (!/^\d{5,12}$/.test(d.documentoPropietarioRemolque)) {
       ctx.addIssue({
         code: "custom",
         path: ["documentoPropietarioRemolque"],
         message:
-          d.tipoPropietarioRemolque === "PP"
-            ? "Solo letras y números (5 a 15 caracteres)."
-            : "Escribe solo números, sin puntos ni espacios (5 a 12 dígitos).",
+          "Escribe solo números, sin puntos ni espacios (5 a 12 dígitos).",
       });
     }
   });
