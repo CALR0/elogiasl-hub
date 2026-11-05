@@ -294,10 +294,12 @@ la consulta queda en error con su mensaje: **nunca se llenan datos simulados en 
 `simulada = true`.
 
 **Reportes:** `GET /api/estudios/reporte/{consulta}?formato=html|pdf` (solo Verificar o Historial; lee la
-consulta con la sesión del usuario). "Ver reporte" muestra el HTML de TusDatos en un iframe y "Descargar
-PDF" baja el oficial, reintentando mientras TusDatos responde 202. Ese HTML es de un tercero: se sirve con
-`Content-Security-Policy: sandbox` e `iframe sandbox`, sin scripts. Si el reporte necesitara scripts se
-vería incompleto y queda el PDF. `next.config.ts` excluye esa ruta de su CSP global, porque si no la reemplaza.
+consulta con la sesión del usuario). En el detalle del estudio **cada consulta muestra solo lo contundente**:
+rol, placa/documento, nombre consultado, pastilla de nivel y dos tarjetitas con el conteo de fuentes y de
+hallazgos por nivel. "Ver reporte" abre `/estudios/reporte/{consulta}` en otra pestaña, donde el iframe
+ocupa casi toda la pantalla y el HTML oficial de TusDatos trae el detalle (fuentes una a una, hallazgos
+textuales, descargar PDF). El HTML se sirve con `Content-Security-Policy: sandbox` e `iframe sandbox`,
+sin scripts; `next.config.ts` excluye esa ruta de su CSP global.
 
 **Trazabilidad para pruebas:**
 - Vercel → Logs, buscar `[estudios]`: una línea JSON por petición a TusDatos (`tusdatos.http`: ruta, status,

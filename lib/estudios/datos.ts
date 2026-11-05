@@ -280,6 +280,93 @@ export async function obtenerEstudio(numero: number): Promise<Estudio | null> {
   };
 }
 
+/** Datos para la página de "Ver reporte": consulta + número de solicitud. */
+export interface ConsultaConSolicitud {
+  numero: number;
+  modulo: "documento" | "vehiculo";
+  solicitanteId: string;
+  consulta: ConsultaEstudio;
+}
+
+/**
+ * Lee una consulta por id (uuid). Devuelve también el número y el solicitante
+ * para construir el encabezado del reporte. RLS (verificar / historial) filtra
+ * el acceso: quien solicitó no puede leer esto.
+ */
+export async function obtenerConsultaParaReporte(
+  id: string,
+): Promise<ConsultaConSolicitud | null> {
+  if (MODO_DEMO) {
+    for (const s of almacenEstudios().solicitudes) {
+      const c = s.consultas.find((x) => x.id === id);
+      if (c) {
+        return {
+          numero: s.numero,
+          modulo: s.modulo,
+          solicitanteId: s.solicitante,
+          consulta: c,
+        };
+      }
+    }
+    return null;
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("estudio_consultas")
+    .select(
+      "id, rol, placa, tipo_doc, documento, estado, nivel, nombre_consultado, fuentes, datos, mensaje_error, report_id, estudio_hallazgos ( nivel, fuente, codigo, titulo, descripcion ), estudio_solicitudes ( numero, tipo_documento, simulada, created_by )",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) console.error("[estudios]", error);
+    return null;
+  }
+  const c = data as unknown as {
+    id: string;
+    rol: RolConsulta;
+    placa: string | null;
+    tipo_doc: string;
+    documento: string | null;
+    estado: EstadoConsulta;
+    nivel: NivelHallazgo | null;
+    nombre_consultado: string | null;
+    fuentes: Record<string, ResultadoFuente>;
+    datos: Record<string, unknown>;
+    mensaje_error: string | null;
+    report_id: string | null;
+    estudio_hallazgos: Hallazgo[];
+    estudio_solicitudes: {
+      numero: number;
+      tipo_documento: TipoDocumento;
+      simulada: boolean;
+      created_by: string;
+    } | null;
+  };
+  if (!c.estudio_solicitudes) return null;
+  return {
+    numero: c.estudio_solicitudes.numero,
+    modulo: moduloDe(c.estudio_solicitudes.tipo_documento),
+    solicitanteId: c.estudio_solicitudes.created_by,
+    consulta: {
+      id: c.id,
+      rol: c.rol,
+      placa: c.placa,
+      tipoDoc: c.tipo_doc,
+      documento: c.documento,
+      estado: c.estado,
+      nivel: c.nivel,
+      nombreConsultado: c.nombre_consultado,
+      fuentes: c.fuentes ?? {},
+      hallazgos: c.estudio_hallazgos ?? [],
+      datos: c.datos ?? {},
+      mensajeError: c.mensaje_error,
+      tieneReporte: Boolean(c.report_id),
+      simulada: c.estudio_solicitudes.simulada,
+    },
+  };
+}
+
 function aBandeja(e: Estudio): FilaBandeja {
   return {
     id: e.id,
