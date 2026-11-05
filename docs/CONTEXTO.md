@@ -301,16 +301,20 @@ pantalla completa (`sandbox="allow-same-origin allow-modals"` — scripts bloque
 el diálogo nativo de impresión). El botón "Descargar" dispara `contentWindow.print()` y el usuario elige
 "Guardar como PDF". `next.config.ts` excluye esa ruta de su CSP global.
 
-**Descarga desde la bandeja:** `/estudios/descargar/{numero}` apila los HTML oficiales de TusDatos
-en iframes `allow-same-origin` (sin scripts) y, cuando el usuario pulsa "Descargar", convierte cada
-iframe a PDF en el navegador con `html2canvas-pro` + `jsPDF` (A4 vertical, multipágina). No espera
-el PDF asíncrono de TusDatos, que puede tardar minutos.
- - **1 consulta** → un solo PDF con la etiqueta del estudio (`CC 123456 05-11-2026.pdf`,
+**Descarga desde la bandeja:** `BotonDescargarEstudio` hace todo en el mismo botón, sin redirect.
+Al pulsarlo pide los metadatos a `GET /api/estudios/estudio/{numero}/descargar` (solo ids, etiqueta
+y fecha — no HTML), monta **iframes ocultos** con los HTML oficiales de TusDatos
+(`/api/estudios/reporte/{id}?formato=html`, `allow-same-origin` sin scripts), espera a que carguen
+con sus imágenes y los convierte a PDF en el navegador con `html2canvas-pro` + `jsPDF` (A4 vertical,
+multipágina). El botón muestra el progreso ("Cargando 2/3", "Generando 2/3", "Empaquetando ZIP…").
+ - **1 consulta** → un solo PDF nombrado con la etiqueta del estudio (`CC 123456 05-11-2026.pdf`,
    `PLACA ABC123 05-11-2026.pdf`).
  - **>1 consulta** → ZIP nombrado `PLACA ABC123 05-11-2026.zip` con un PDF por consulta
    (`cabezote ABC123.pdf`, `remolque R12345.pdf`, …), empaquetado con `jszip`.
-`BotonDescargarEstudio` es un link `target="_blank"` a esa página. Aparece junto a "Revisar" en la
-bandeja y en Historial cuando el estudio está finalizada y no es simulada.
+
+**Nada se almacena:** los HTML de TusDatos se streamean al vuelo por el proxy, se renderizan en el
+DOM del navegador y se descartan al cerrar la página. La conversión a PDF ocurre client-side. Lo
+único que persiste en la BD es la auditoría (`estudio.reporte`: quién, cuándo, qué consulta).
 
 **Trazabilidad para pruebas:**
 - Vercel → Logs, buscar `[estudios]`: una línea JSON por petición a TusDatos (`tusdatos.http`: ruta, status,
