@@ -46,6 +46,55 @@ function moduloDe(tipo: TipoDocumento): "documento" | "vehiculo" {
   return tipo === "PLACA" ? "vehiculo" : "documento";
 }
 
+interface FilaMisRaw {
+  id: string;
+  numero: number;
+  tipo_documento: TipoDocumento;
+  documento: string | null;
+  nombre: string | null;
+  placa: string | null;
+  tipo_doc_propietario: string | null;
+  placa_remolque: string | null;
+  tipo_doc_propietario_remolque: string | null;
+  documento_propietario_remolque: string | null;
+  tipo_doc_tenedor: string | null;
+  documento_tenedor: string | null;
+  tipo_doc_conductor: string | null;
+  documento_conductor: string | null;
+  incluir_antecedentes: boolean;
+  estado: EstadoEstudio;
+  created_at: string;
+  decision: Decision;
+  comentario_verificador: string | null;
+  decidida_at: string | null;
+}
+
+/** ¿El estudio tiene más de una persona / placa en la consulta? */
+function esCombo(f: FilaMisRaw) {
+  return Boolean(
+    f.documento_tenedor ||
+      f.documento_conductor ||
+      f.placa_remolque ||
+      f.incluir_antecedentes,
+  );
+}
+
+function entradaDe(f: FilaMisRaw): import("./tipos").EntradaSolicitud {
+  return {
+    placa: f.placa,
+    tipoDocPropietario: f.tipo_doc_propietario,
+    documentoPropietario: f.documento,
+    tipoDocTenedor: f.tipo_doc_tenedor,
+    documentoTenedor: f.documento_tenedor,
+    tipoDocConductor: f.tipo_doc_conductor,
+    documentoConductor: f.documento_conductor,
+    placaRemolque: f.placa_remolque,
+    tipoDocPropietarioRemolque: f.tipo_doc_propietario_remolque,
+    documentoPropietarioRemolque: f.documento_propietario_remolque,
+    incluirAntecedentes: f.incluir_antecedentes,
+  };
+}
+
 /**
  * "Mis solicitudes": solo las que YO creé. Filtramos explícitamente aunque
  * exista la policy de "propias", porque un verificador también tiene la
@@ -61,7 +110,7 @@ export async function listarMisSolicitudes(): Promise<SolicitudResumen[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, created_at, decision, comentario_verificador, decidida_at",
+      "id, numero, tipo_documento, documento, nombre, placa, tipo_doc_propietario, placa_remolque, tipo_doc_propietario_remolque, documento_propietario_remolque, tipo_doc_tenedor, documento_tenedor, tipo_doc_conductor, documento_conductor, incluir_antecedentes, estado, created_at, decision, comentario_verificador, decidida_at",
     )
     .eq("created_by", usuario.id)
     .order("created_at", { ascending: false });
@@ -69,16 +118,18 @@ export async function listarMisSolicitudes(): Promise<SolicitudResumen[]> {
     console.error("[estudios]", error);
     return [];
   }
-  return (data ?? []).map((f) => ({
-    id: f.id as string,
-    numero: f.numero as number,
-    modulo: moduloDe(f.tipo_documento as TipoDocumento),
+  return (data as unknown as FilaMisRaw[]).map((f) => ({
+    id: f.id,
+    numero: f.numero,
+    modulo: moduloDe(f.tipo_documento),
+    tipo: esCombo(f) ? "combo" : "individual",
     descripcion: descripcion(f as never),
-    estado: f.estado as EstadoEstudio,
-    fecha: f.created_at as string,
-    decision: (f.decision ?? "pendiente") as Decision,
-    comentario: (f.comentario_verificador as string | null) ?? null,
-    decididaAt: (f.decidida_at as string | null) ?? null,
+    estado: f.estado,
+    fecha: f.created_at,
+    decision: f.decision ?? "pendiente",
+    comentario: f.comentario_verificador ?? null,
+    decididaAt: f.decidida_at ?? null,
+    entrada: entradaDe(f),
   }));
 }
 
@@ -87,6 +138,7 @@ export interface FilaBandeja {
   id: string;
   numero: number;
   modulo: "documento" | "vehiculo";
+  tipo: "individual" | "combo";
   descripcion: string;
   nombreConsultado: string | null;
   fecha: string;
@@ -105,6 +157,9 @@ interface FilaPendienteRaw {
   nombre: string | null;
   placa: string | null;
   placa_remolque: string | null;
+  documento_tenedor: string | null;
+  documento_conductor: string | null;
+  incluir_antecedentes: boolean;
   estado: EstadoEstudio;
   decision: Decision;
   simulada: boolean;
@@ -117,10 +172,17 @@ interface FilaPendienteRaw {
 }
 
 function construirFila(f: FilaPendienteRaw): FilaBandeja {
+  const combo = Boolean(
+    f.documento_tenedor ||
+      f.documento_conductor ||
+      f.placa_remolque ||
+      f.incluir_antecedentes,
+  );
   return {
     id: f.id,
     numero: f.numero,
     modulo: moduloDe(f.tipo_documento),
+    tipo: combo ? "combo" : "individual",
     descripcion: descripcion(f),
     nombreConsultado: f.estudio_resultados?.nombre_consultado ?? null,
     fecha: f.created_at,
@@ -146,7 +208,7 @@ export async function listarPendientes(): Promise<FilaBandeja[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, documento_tenedor, documento_conductor, incluir_antecedentes, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
     )
     .eq("decision", "pendiente")
     .neq("estado", "error")
@@ -171,7 +233,7 @@ export async function listarHistorial(): Promise<FilaBandeja[]> {
   const { data, error } = await supabase
     .from("estudio_solicitudes")
     .select(
-      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
+      "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, documento_tenedor, documento_conductor, incluir_antecedentes, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
     )
     .neq("decision", "pendiente")
     .order("decidida_at", { ascending: false });
@@ -186,6 +248,10 @@ const ORDEN_ROL: Record<RolConsulta, number> = {
   documento: 0,
   cabezote: 1,
   remolque: 2,
+  propietario: 3,
+  prop_remolque: 4,
+  tenedor: 5,
+  conductor: 6,
 };
 
 /** Detalle completo del estudio para el verificador. */
@@ -372,6 +438,7 @@ function aBandeja(e: Estudio): FilaBandeja {
     id: e.id,
     numero: e.numero,
     modulo: e.modulo,
+    tipo: e.consultas.length > 1 ? "combo" : "individual",
     descripcion: e.descripcion,
     nombreConsultado: e.nombreConsultado,
     fecha: e.fecha,

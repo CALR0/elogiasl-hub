@@ -14,6 +14,10 @@ const NOMBRE_ROL: Record<RolConsulta, string> = {
   documento: "Documento",
   cabezote: "Cabezote",
   remolque: "Remolque",
+  propietario: "Propietario",
+  tenedor: "Tenedor",
+  conductor: "Conductor",
+  prop_remolque: "Propietario del remolque",
 };
 
 export default async function ReporteConsultaPage({

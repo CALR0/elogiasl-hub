@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Check, ChevronRight, Search, X } from "lucide-react";
+import { Check, ChevronRight, Layers, Search, X } from "lucide-react";
 import { Input, Select } from "@/components/ui/field";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import { BotonDescargarEstudio } from "@/components/estudios/boton-descargar-estudio";
@@ -98,6 +98,12 @@ export function ListaHistorial({ items }: { items: FilaBandeja[] }) {
                 <span className="text-muted-foreground">
                   · {s.modulo === "vehiculo" ? "Vehículo" : "Documento"}
                 </span>
+                {s.tipo === "combo" && (
+                  <span className="border-primary/25 bg-primary/5 text-primary inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                    <Layers className="size-3" aria-hidden />
+                    Combo
+                  </span>
+                )}
                 <PastillaNivel nivel={s.nivel} tamaño="sm" />
               </div>
               <p className="mt-0.5 truncate text-sm font-medium">

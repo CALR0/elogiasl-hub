@@ -163,6 +163,14 @@ export interface EntradaConsulta {
   placaRemolque: string | null;
   tipoDocPropietarioRemolque: string | null;
   documentoPropietarioRemolque: string | null;
+  // Combo: tenedor, conductor y antecedentes (solo PLACA)
+  tipoDocTenedor: string | null;
+  documentoTenedor: string | null;
+  fechaExpedicionTenedor: string | null;
+  tipoDocConductor: string | null;
+  documentoConductor: string | null;
+  fechaExpedicionConductor: string | null;
+  incluirAntecedentes: boolean;
 }
 
 export interface PlanConsulta {
@@ -200,19 +208,61 @@ export function planDeConsultas(e: EntradaConsulta): PlanConsulta[] {
     nombre: null,
     fechaExpedicion: null,
   });
-  const tipo = e.tipoDocPropietario ?? "CC";
-  const doc = e.documento ?? "";
-  return [
-    placa("cabezote", e.placa ?? "", tipo, doc),
-    ...(e.placaRemolque
-      ? [
-          placa(
-            "remolque",
-            e.placaRemolque,
-            e.tipoDocPropietarioRemolque ?? tipo,
-            e.documentoPropietarioRemolque ?? doc,
-          ),
-        ]
-      : []),
+  const persona = (
+    rol: RolConsulta,
+    tipoDoc: string,
+    documento: string,
+    fechaExpedicion: string | null,
+  ): PlanConsulta => ({
+    rol,
+    placa: null,
+    tipoDoc,
+    documento,
+    nombre: null,
+    fechaExpedicion,
+  });
+  const tipoPropCabezote = e.tipoDocPropietario ?? "CC";
+  const docPropCabezote = e.documento ?? "";
+  const tipoPropRem = e.tipoDocPropietarioRemolque ?? tipoPropCabezote;
+  const docPropRem = e.documentoPropietarioRemolque ?? docPropCabezote;
+
+  const consultas: PlanConsulta[] = [
+    placa("cabezote", e.placa ?? "", tipoPropCabezote, docPropCabezote),
   ];
+  if (e.placaRemolque) {
+    consultas.push(placa("remolque", e.placaRemolque, tipoPropRem, docPropRem));
+  }
+  // Antecedentes de los propietarios: solo si el usuario lo marcó
+  if (e.incluirAntecedentes) {
+    consultas.push(
+      persona("propietario", tipoPropCabezote, docPropCabezote, null),
+    );
+    if (e.placaRemolque && e.documentoPropietarioRemolque) {
+      consultas.push(
+        persona("prop_remolque", tipoPropRem, docPropRem, null),
+      );
+    }
+  }
+  // Tenedor y conductor: siempre consultan antecedentes cuando se agregan
+  if (e.tipoDocTenedor && e.documentoTenedor) {
+    consultas.push(
+      persona(
+        "tenedor",
+        e.tipoDocTenedor,
+        e.documentoTenedor,
+        e.fechaExpedicionTenedor,
+      ),
+    );
+  }
+  if (e.tipoDocConductor && e.documentoConductor) {
+    consultas.push(
+      persona(
+        "conductor",
+        e.tipoDocConductor,
+        e.documentoConductor,
+        e.fechaExpedicionConductor,
+      ),
+    );
+  }
+  return consultas;
 }

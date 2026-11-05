@@ -54,6 +54,13 @@ const VACIO: Omit<EntradaConsulta, "tipoDocumento"> = {
   placaRemolque: null,
   tipoDocPropietarioRemolque: null,
   documentoPropietarioRemolque: null,
+  tipoDocTenedor: null,
+  documentoTenedor: null,
+  fechaExpedicionTenedor: null,
+  tipoDocConductor: null,
+  documentoConductor: null,
+  fechaExpedicionConductor: null,
+  incluirAntecedentes: false,
 };
 
 export function entradaDocumento(d: ConsultaDocumento): EntradaConsulta {
@@ -97,6 +104,19 @@ export function entradaVehiculo(v: ConsultaVehiculo): EntradaConsulta {
       incluir && !mismo ? v.tipoPropietarioRemolque : null,
     documentoPropietarioRemolque:
       incluir && !mismo ? v.documentoPropietarioRemolque : null,
+    tipoDocTenedor: v.incluirTenedor ? v.tipoTenedor : null,
+    documentoTenedor: v.incluirTenedor ? v.documentoTenedor : null,
+    fechaExpedicionTenedor:
+      v.incluirTenedor && v.fechaExpedicionTenedor
+        ? v.fechaExpedicionTenedor
+        : null,
+    tipoDocConductor: v.incluirConductor ? v.tipoConductor : null,
+    documentoConductor: v.incluirConductor ? v.documentoConductor : null,
+    fechaExpedicionConductor:
+      v.incluirConductor && v.fechaExpedicionConductor
+        ? v.fechaExpedicionConductor
+        : null,
+    incluirAntecedentes: v.incluirAntecedentes,
   };
 }
 
@@ -104,6 +124,10 @@ const NOMBRE_ROL: Record<RolConsulta, string> = {
   documento: "Documento",
   cabezote: "Cabezote",
   remolque: "Remolque",
+  propietario: "Propietario",
+  tenedor: "Tenedor",
+  conductor: "Conductor",
+  prop_remolque: "Propietario del remolque",
 };
 
 const etiquetaConsulta = (c: { rol: RolConsulta; placa: string | null }) =>
@@ -193,6 +217,15 @@ export async function crearSolicitud(
       placa: entrada.placa,
       tipo_doc_propietario: entrada.tipoDocPropietario,
       placa_remolque: entrada.placaRemolque,
+      tipo_doc_propietario_remolque: entrada.tipoDocPropietarioRemolque,
+      documento_propietario_remolque: entrada.documentoPropietarioRemolque,
+      tipo_doc_tenedor: entrada.tipoDocTenedor,
+      documento_tenedor: entrada.documentoTenedor,
+      fecha_expedicion_tenedor: entrada.fechaExpedicionTenedor,
+      tipo_doc_conductor: entrada.tipoDocConductor,
+      documento_conductor: entrada.documentoConductor,
+      fecha_expedicion_conductor: entrada.fechaExpedicionConductor,
+      incluir_antecedentes: entrada.incluirAntecedentes,
       autorizacion_titular: true,
       estado: "procesando",
       simulada,

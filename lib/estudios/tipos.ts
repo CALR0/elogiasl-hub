@@ -20,21 +20,61 @@ export interface Hallazgo {
   descripcion: string;
 }
 
+/** Qué agrupó el solicitante: una sola persona o placa, o varias. */
+export type TipoSolicitud = "individual" | "combo";
+
+/**
+ * Datos que escribió el solicitante (sin resultados): se muestran al abrir
+ * el detalle en Mis solicitudes.
+ */
+export interface EntradaSolicitud {
+  placa: string | null;
+  tipoDocPropietario: string | null;
+  documentoPropietario: string | null;
+  // Tenedor y conductor (combo)
+  tipoDocTenedor: string | null;
+  documentoTenedor: string | null;
+  tipoDocConductor: string | null;
+  documentoConductor: string | null;
+  // Remolque
+  placaRemolque: string | null;
+  tipoDocPropietarioRemolque: string | null;
+  documentoPropietarioRemolque: string | null;
+  // Flags
+  incluirAntecedentes: boolean;
+}
+
 /** Fila de "Mis solicitudes": sin hallazgos ni fuentes. */
 export interface SolicitudResumen {
   id: string;
   numero: number;
   modulo: "documento" | "vehiculo";
+  tipo: TipoSolicitud;
   descripcion: string;
   estado: EstadoEstudio;
   fecha: string;
   decision: Decision;
   comentario: string | null;
   decididaAt: string | null;
+  entrada: EntradaSolicitud;
 }
 
-/** Qué se consultó: un documento, o la placa del cabezote o del remolque. */
-export type RolConsulta = "documento" | "cabezote" | "remolque";
+/**
+ * Qué se consultó. Los estudios de documento tienen rol "documento". Los de
+ * vehículo tienen "cabezote" y, si lleva, "remolque" (consultas de placa +
+ * propietario). Si el combo agrega tenedor / conductor, cada uno es una
+ * consulta de antecedentes con su propio rol; "propietario" y "prop_remolque"
+ * son los antecedentes de los propietarios cuando se marca "Incluir consulta
+ * de antecedentes".
+ */
+export type RolConsulta =
+  | "documento"
+  | "cabezote"
+  | "remolque"
+  | "propietario"
+  | "tenedor"
+  | "conductor"
+  | "prop_remolque";
 
 export type EstadoConsulta = "procesando" | "finalizada" | "error";
 

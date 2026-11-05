@@ -327,15 +327,28 @@ DOM del navegador y se descartan al cerrar la página. La conversión a PDF ocur
 - Detalle del estudio: bitácora con cada paso (`estudio_eventos`).
 
 ### 6.3 Diseño de "Solicitar"
-Portado del diseño de elogix-app:
+Portado del diseño de elogix-app y ampliado con el combo de TusDatos:
 - **Landing** `/estudios/solicitar` — dos tarjetas (documento / vehículo).
 - **Documento** — `OpcionesPastilla` para el tipo (CC/CE/PPT/PP/NIT), fecha solo en CE/PPT, nombre
   solo en PP, autorización Habeas Data en su propio card.
-- **Vehículo** — campo `PlacaInput` con estilo de placa colombiana amarilla, `OpcionesPastilla` para
-  el tipo de propietario, toggle para "lleva remolque" con su propia placa R/S y propietario (mismos
-  tipos que el cabezote, o el mismo propietario).
+- **Vehículo (combo)** — espeja `dash-board.tusdatos.co/vehiculos`:
+  - `PlacaInput` con estilo de placa colombiana amarilla.
+  - Propietario obligatorio (tipo + documento + fecha de expedición opcional).
+  - Botones **"Agregar tenedor / poseedor"** y **"Agregar conductor"** que despliegan una sección
+    con tipo + documento + fecha opcional (tipos CC/CE/NIT/TI/PP/PPT). Botón "Quitar" para
+    retirarlos. Tenedor y conductor siempre consultan antecedentes.
+  - Toggle **"Agregar remolque"** con su placa R/S y propietario (mismos tipos que cabezote, o
+    "mismo propietario").
+  - Check **"Incluir consulta de antecedentes"** — dispara antecedentes del propietario (y del
+    propietario del remolque si lleva).
+  - Aside **"Resumen"** en vivo con las personas y placas que llevará la solicitud.
 - **Resultado** — card centrado con referencia SOL-XXXXXX al enviar bien, o card de error con
   "Intentar de nuevo" conservando los datos.
+
+`planDeConsultas` (en `resultado.ts`) genera las consultas: `cabezote`, opcional `remolque`,
+opcionales `tenedor` y `conductor` (via `/api/launch` individual con su documento), y, cuando el
+check de antecedentes está marcado, `propietario` y `prop_remolque` (via `/api/launch` del
+propietario correspondiente). Solo las placas pasan por `/api/launch/car`.
 
 ### 6.4 Créditos TusDatos
 `components/estudios/creditos-tusdatos.tsx` consulta `GET /api/plans` (devuelve un array con
@@ -344,14 +357,22 @@ derecha del Encabezado de Verificar e Historial: "Créditos 442 / 10.041 [▭] 4
 verde / ámbar (<30%) / rojo (<10%). Sin credenciales → chip ámbar "Modo simulado"; API caída →
 chip rojo "TusDatos no responde". Render en servidor dentro de `<Suspense>`.
 
-### 6.5 Mis solicitudes · filtrado explícito
+### 6.5 Mis solicitudes · filtrado explícito y detalle
 `listarMisSolicitudes` filtra por `created_by = auth.uid()` **además** de la RLS, porque la
 política "verificador lee todas" también se aplica a quien tiene `estudios.verificar` y haría
-que viera solicitudes ajenas en su bandeja de "Mis solicitudes".
+que viera solicitudes ajenas en su bandeja de "Mis solicitudes". Cada fila muestra una pastilla
+"Individual" o "Combo" según si el estudio tiene tenedor, conductor, remolque o antecedentes; al
+hacer clic la fila se expande y muestra los datos que escribió el solicitante (placa, tipos y
+números de documento de cada persona y del remolque). Nunca muestra fuentes ni hallazgos.
+
+### 6.5.1 Combo en bandeja e historial
+La bandeja de Verificar e Historial también muestran la pastilla "Combo" al lado del número de
+solicitud: visualmente se distingue del flujo individual sin abrir el detalle.
 
 ### 6.6 Archivos clave
 - Migraciones: `20261105000000_estudios.sql`, `20261105010000_estudios_remolque.sql`,
-  `20261105030000_estudios_consultas.sql`, `20261105040000_estudios_cierre_y_limpieza.sql`.
+  `20261105030000_estudios_consultas.sql`, `20261105040000_estudios_cierre_y_limpieza.sql`,
+  `20261106000000_estudios_combo.sql`.
 - Esquemas y tipos: `lib/estudios/{schemas,tipos,simulador,tusdatos,resultado,traza,procesar,datos}.ts`.
 - API: `app/api/estudios/{sincronizar,reporte/[id]}/route.ts`.
 - Rutas: `app/(plataforma)/estudios/{solicitar/{documento,vehiculo},mis-solicitudes,verificar/

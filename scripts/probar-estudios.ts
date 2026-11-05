@@ -103,6 +103,13 @@ const vacio: Omit<EntradaConsulta, "tipoDocumento"> = {
   placaRemolque: null,
   tipoDocPropietarioRemolque: null,
   documentoPropietarioRemolque: null,
+  tipoDocTenedor: null,
+  documentoTenedor: null,
+  fechaExpedicionTenedor: null,
+  tipoDocConductor: null,
+  documentoConductor: null,
+  fechaExpedicionConductor: null,
+  incluirAntecedentes: false,
 };
 const documento = planDeConsultas({
   ...vacio,

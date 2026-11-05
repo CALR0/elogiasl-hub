@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronRight, LoaderCircle, Search } from "lucide-react";
+import { ChevronRight, Layers, LoaderCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/field";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import { BotonDescargarEstudio } from "@/components/estudios/boton-descargar-estudio";
@@ -75,6 +75,12 @@ export function BandejaVerificar({ items }: { items: FilaBandeja[] }) {
                 <span className="text-muted-foreground">
                   · {s.modulo === "vehiculo" ? "Vehículo" : "Documento"}
                 </span>
+                {s.tipo === "combo" && (
+                  <span className="border-primary/25 bg-primary/5 text-primary inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                    <Layers className="size-3" aria-hidden />
+                    Combo
+                  </span>
+                )}
                 {s.simulada && (
                   <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700">
                     Simulada
