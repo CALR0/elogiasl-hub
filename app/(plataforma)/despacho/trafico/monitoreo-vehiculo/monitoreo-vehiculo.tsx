@@ -1,19 +1,27 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import {
   ChevronDown,
   CircleAlert,
+  Download,
+  FileSpreadsheet,
   LoaderCircle,
   MapPin,
   Phone,
   Search,
   Truck,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClasses, Select } from "@/components/ui/field";
 import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
+import {
+  descargarPlantilla,
+  exportarResultados,
+  leerPlacasDeExcel,
+} from "@/lib/controlt/excel";
 import type { ResultadoConsulta, ViajeResumen } from "@/lib/controlt/tipos";
 import { cx, fechaHora } from "@/lib/utils";
 import { consultar, type ConsultaEntrada } from "./acciones";
@@ -49,7 +57,10 @@ export function MonitoreoVehiculo() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [mensajeImport, setMensajeImport] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
+  const [exportando, setExportando] = useState(false);
+  const inputArchivo = useRef<HTMLInputElement>(null);
 
   function ejecutar(e: React.FormEvent) {
     e.preventDefault();
@@ -66,8 +77,55 @@ export function MonitoreoVehiculo() {
     });
   }
 
+  async function onImportar(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!archivo) return;
+    setError(null);
+    setMensajeImport(null);
+    try {
+      const placas = await leerPlacasDeExcel(archivo);
+      if (placas.length === 0) {
+        setError(
+          "El archivo no tenía placas válidas. Usa la plantilla y llena la columna «placa».",
+        );
+        return;
+      }
+      setValor(placas.join(", "));
+      setMensajeImport(
+        `${placas.length} placa${placas.length === 1 ? "" : "s"} cargada${placas.length === 1 ? "" : "s"} desde el Excel.`,
+      );
+    } catch (err) {
+      console.error("[controlt.import]", err);
+      setError("No se pudo leer el Excel. Asegúrate de que es .xlsx o .xls.");
+    }
+  }
+
+  async function onExportar() {
+    if (!datos) return;
+    setExportando(true);
+    try {
+      await exportarResultados(datos);
+    } catch (err) {
+      console.error("[controlt.export]", err);
+      setError("No se pudo exportar el Excel.");
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  async function onPlantilla() {
+    try {
+      await descargarPlantilla();
+    } catch (err) {
+      console.error("[controlt.plantilla]", err);
+      setError("No se pudo generar la plantilla.");
+    }
+  }
+
   const vehiculos = datos?.vehiculos ?? [];
   const viajes = datos?.viajes ?? [];
+  const hayResultados = vehiculos.length > 0 || viajes.length > 0;
 
   return (
     <div className="grid gap-5 md:grid-cols-[minmax(0,300px)_minmax(0,1fr)] md:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
@@ -94,20 +152,34 @@ export function MonitoreoVehiculo() {
             label={tipo === "placa" ? "Placas" : "Número"}
             hint={
               tipo === "placa"
-                ? "Una o varias placas separadas por coma."
+                ? "Una o varias placas. Separa con coma, espacio o salto de línea."
                 : "Número de manifiesto u orden (ej. 0101220628)."
             }
           >
-            <input
-              id="valor"
-              value={valor}
-              onChange={(e) => setValor(e.target.value)}
-              disabled={pendiente}
-              className={inputClasses}
-              spellCheck={false}
-              autoComplete="off"
-              placeholder={tipo === "placa" ? "TUL689, TFR852" : "0101220628"}
-            />
+            {tipo === "placa" ? (
+              <textarea
+                id="valor"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                disabled={pendiente}
+                className={cx(inputClasses, "min-h-24 resize-y py-2 font-mono")}
+                spellCheck={false}
+                autoComplete="off"
+                rows={4}
+                placeholder="TUL689, TFR852&#10;ABC123"
+              />
+            ) : (
+              <input
+                id="valor"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                disabled={pendiente}
+                className={inputClasses}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="0101220628"
+              />
+            )}
           </Field>
 
           <Button type="submit" disabled={pendiente || !valor.trim()}>
@@ -118,6 +190,56 @@ export function MonitoreoVehiculo() {
             )}
             {pendiente ? "Consultando…" : "Consultar"}
           </Button>
+
+          {tipo === "placa" && (
+            <div className="flex flex-wrap gap-2 border-t pt-3 text-xs">
+              <input
+                ref={inputArchivo}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={onImportar}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => inputArchivo.current?.click()}
+                disabled={pendiente}
+                className="text-muted-foreground hover:bg-secondary hover:text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-medium transition-colors disabled:opacity-60"
+                title="Importar placas desde un archivo Excel"
+              >
+                <Upload className="size-3.5" aria-hidden />
+                Importar Excel
+              </button>
+              <button
+                type="button"
+                onClick={onPlantilla}
+                className="text-muted-foreground hover:bg-secondary hover:text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-medium transition-colors"
+                title="Descargar una plantilla de Excel para llenar"
+              >
+                <FileSpreadsheet className="size-3.5" aria-hidden />
+                Plantilla
+              </button>
+              {hayResultados && (
+                <button
+                  type="button"
+                  onClick={onExportar}
+                  disabled={exportando}
+                  className="text-primary hover:bg-primary/10 ml-auto inline-flex items-center gap-1.5 rounded-md border border-primary/30 px-2 py-1 font-medium transition-colors disabled:opacity-60"
+                  title="Exportar los resultados a Excel"
+                >
+                  {exportando ? (
+                    <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Download className="size-3.5" aria-hidden />
+                  )}
+                  Exportar resultados
+                </button>
+              )}
+            </div>
+          )}
+          {mensajeImport && (
+            <p className="text-primary text-xs">{mensajeImport}</p>
+          )}
         </form>
 
         {error && (
