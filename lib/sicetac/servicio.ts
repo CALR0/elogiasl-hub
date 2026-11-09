@@ -67,6 +67,18 @@ function periodoColombia() {
     .replace(/-/g, "");
 }
 
+/**
+ * El RNDC usa DANE de municipio con 8 dígitos (los dos primeros son el código
+ * de departamento con cero inicial si hace falta: Antioquia 05, Atlántico 08).
+ * SICETAC usa el mismo DANE pero como número — sin ceros a la izquierda:
+ * Medellín 5001000, Barranquilla 8001000, Bogotá 11001000. Si se envía con
+ * el cero, el portal responde "El portal SICETAC no ofrece DESTINO = 05001000".
+ */
+function normalizarDane(dane: string) {
+  const n = Number.parseInt(String(dane ?? "").trim(), 10);
+  return Number.isFinite(n) && n > 0 ? String(n) : dane;
+}
+
 const vacio = (
   manifiesto: string,
   estado: EstadoCalculo,
@@ -183,12 +195,19 @@ async function calcular(actor: Actor, manifiesto: string): Promise<Calculo> {
   // Configuración del vehículo por el RNDC (proceso 12), con el acceso del propio XML
   const cfg = await configuracionVehiculo(d.acceso, d.nit, d.placa, d.remolque);
 
+  // El RNDC trae el DANE con ceros iniciales (ej. 05001000 = Medellín), pero
+  // SICETAC usa el mismo DANE SIN ceros a la izquierda (5001000). Si lo
+  // enviamos "crudo" el portal responde "El portal SICETAC no ofrece
+  // DESTINO = 05001000".
+  const origen = normalizarDane(d.origen);
+  const destino = normalizarDane(d.destino);
+
   const periodo = periodoColombia();
   const clave = [
     periodo.slice(0, 6),
     cfg.configuracion,
-    d.origen,
-    d.destino,
+    origen,
+    destino,
     carga.tipocarga,
     carga.condicion,
     horasCargue,
@@ -201,8 +220,8 @@ async function calcular(actor: Actor, manifiesto: string): Promise<Calculo> {
       CONDICIONCARGA: carga.condicion,
       UNIDADTRANSPORTE: "1",
       TIPOCARGA: carga.tipocarga,
-      ORIGEN: d.origen,
-      DESTINO: d.destino,
+      ORIGEN: origen,
+      DESTINO: destino,
       HORASCARGUE: String(horasCargue),
       HORASDESCARGUE: String(horasDescargue),
       periodo,
