@@ -175,15 +175,18 @@ export async function calcularSicetac(
       throw new ErrorSicetac(`El portal SICETAC no aceptó ${ctrl} = ${valor}.`);
   }
 
-  const rutas = portal.opciones("RUTA");
+  // El portal muestra la ruta "estándar" (sin "VIA …" en el texto) primero y
+  // alternativas con desvío después. Si hay varias, usamos la primera: igual
+  // que el usuario al dejar el desplegable como viene. Solo falla cuando el
+  // portal no ofrece ninguna.
+  const rutas = portal.opciones("RUTA").filter((r) => r.valor);
   const ruta =
     (p.RUTA && rutas.find((r) => r.valor === p.RUTA)?.valor) ||
-    (rutas.length === 1 ? rutas[0].valor : "");
+    rutas[0]?.valor ||
+    "";
   if (!ruta)
     throw new ErrorSicetac(
-      rutas.length
-        ? `Hay ${rutas.length} rutas posibles y no se pudo elegir una: ${rutas.map((r) => r.texto).join(" | ")}`
-        : "El portal SICETAC no tiene rutas para ese origen y destino.",
+      "El portal SICETAC no tiene rutas para ese origen y destino.",
     );
   await portal.postback(P + "RUTA", { [P + "RUTA"]: ruta });
   if (portal.valorSelect("RUTA") !== ruta)
