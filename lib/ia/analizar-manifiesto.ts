@@ -89,7 +89,7 @@ export function contextoParaIA(a: AnalisisManifiesto): string {
     `Consulta a ministerio.colombiasoftware.net del manifiesto ${a.manifiesto}:`,
     `- Encontrado: ${a.encontrado ? "sí" : "no"}`,
     `- Ya radicado: ${a.radicado ? "sí" : "no"}`,
-    `- Error de SICETAC (MAN045, flete bajo): ${a.errorSicetac ? "sí" : "no"}`,
+    `- Error de SICETAC (MAN045, flete pactado por debajo del vigente): ${a.errorSicetac ? "sí" : "no"}`,
     `- Último mensaje del ministerio: ${a.mensaje}`,
   ];
   if (a.xmlRecortado) {
