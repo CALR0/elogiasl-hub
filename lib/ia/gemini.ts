@@ -10,7 +10,7 @@ import "server-only";
  * a internet.
  */
 
-export const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-2.0-flash";
+export const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-3.8-flash";
 
 export interface MensajeChat {
   rol: "usuario" | "ia";
