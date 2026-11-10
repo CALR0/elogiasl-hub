@@ -408,7 +408,7 @@ solicitud: visualmente se distingue del flujo individual sin abrir el detalle.
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-06) y siguientes pasos
+## 8. Estado actual (2026-11-10) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
 Cada push a `main` despliega. Todas las migraciones, incluida `20261106000000_estudios_combo`, están
@@ -432,6 +432,11 @@ el módulo de Estudios ya hizo consultas reales contra `dash-board.tusdatos.co`.
   vuelve a modo simulado. Chip de créditos TusDatos (restantes, con umbrales 100 / 50). Descarga
   client-side del reporte PDF (individual) o ZIP con los PDF (combo), sin esperar al PDF
   asíncrono de TusDatos.
+
+- ✅ **Asistente IA** (botón flotante en toda la plataforma, Gemini 2.0 Flash). Detecta un número
+  de manifiesto en el mensaje, consulta ministerio.colombiasoftware.net y, si está radicado o
+  trae error, se lo pasa a Gemini como contexto para explicar en lenguaje humano. El historial
+  vive en `useEstadoSesion` (no en BD). Se oculta si falta `GEMINI_API_KEY`.
 
 **Módulos en construcción:** Financiero › Factura.
 
