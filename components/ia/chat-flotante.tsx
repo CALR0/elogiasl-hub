@@ -105,10 +105,21 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
       )}
 
       {abierto && (
-        <div className="fixed right-4 bottom-4 z-40 flex h-[min(620px,calc(100dvh-2rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+        <div
+          className={cx(
+            "fixed z-40 flex flex-col overflow-hidden bg-card shadow-2xl",
+            // En celular ocupa toda la pantalla; desde sm vuelve a ser una
+            // ventana flotante en la esquina con su borde redondeado.
+            "inset-0 h-[100dvh] w-screen rounded-none border-0",
+            "sm:inset-auto sm:right-4 sm:bottom-4 sm:h-[min(620px,calc(100dvh-2rem))] sm:w-[min(420px,calc(100vw-2rem))] sm:rounded-xl sm:border",
+          )}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Elia, IA asistente de Elogia"
+        >
           {/* Encabezado */}
           <div className="flex items-center gap-2 border-b bg-primary/5 px-4 py-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
               <Bot size={16} />
             </div>
             <div className="min-w-0 flex-1">
@@ -122,19 +133,20 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
             <button
               type="button"
               onClick={reiniciar}
-              className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
               title="Empezar una conversación nueva"
+              aria-label="Empezar una conversación nueva"
             >
-              <MessageCircle size={16} />
+              <MessageCircle size={18} />
             </button>
             <button
               type="button"
               onClick={() => setAbierto(false)}
-              className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
               title="Cerrar"
               aria-label="Cerrar Elia"
             >
-              <X size={16} />
+              <X size={20} />
             </button>
           </div>
 
