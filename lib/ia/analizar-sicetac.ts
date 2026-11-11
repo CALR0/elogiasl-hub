@@ -109,15 +109,6 @@ export function contextoSicetacParaIA(a: AnalisisSicetac): string {
       `- Horas de descargue: ${a.detalle.horasDescargue}`,
     );
   }
-  if (a.nuevo) {
-    lineas.push(
-      "",
-      "Retenciones que quedarían con el flete ajustado:",
-      `- Flete nuevo: ${peso(a.nuevo.flete)}`,
-      `- Retención en la fuente (1 %): ${peso(a.nuevo.retencionFuente)}`,
-      `- FOPAT (0,1 %): ${peso(a.nuevo.retencionFopat)}`,
-    );
-  }
   return lineas.join("\n");
 }
 
