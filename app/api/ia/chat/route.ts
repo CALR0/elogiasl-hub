@@ -149,12 +149,13 @@ export async function POST(req: Request) {
     : historial;
 
   try {
-    const respuesta = await pedirRespuesta({
+    const { texto: respuesta, modelo } = await pedirRespuesta({
       system: SYSTEM,
       historial: historialConContexto,
     });
     return json({
       respuesta,
+      modelo,
       // El cliente usa esto para pintar una pastilla "Ya radicado" / "Con error"
       analisis: analisis
         ? {

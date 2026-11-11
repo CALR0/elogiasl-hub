@@ -1,23 +1,47 @@
 import "server-only";
 
 /*
- * Cliente mínimo de Gemini (generativelanguage.googleapis.com) por REST.
- * No se mete el SDK oficial para no agregar dependencias: una sola llamada
- * POST a /v1beta/models/<modelo>:generateContent con la clave en query.
+ * Cliente mínimo de Gemini (generativelanguage.googleapis.com) por REST, sin
+ * SDK oficial.
  *
- * La clave está en GEMINI_API_KEY (server-only). Si no está definida, las
- * funciones que llaman devuelven un mensaje legible y nunca intentan salir
- * a internet.
+ * La clave está en GEMINI_API_KEY (server-only). Como qué modelos ve una
+ * API key depende de la cuenta (una key recién creada no ve siempre los
+ * mismos modelos que una antigua), se prueban varios en orden:
+ *   1. El que el usuario fije en GEMINI_MODELO (si lo fija).
+ *   2. Una lista de modelos flash estables.
+ * Se guarda en memoria el primero que respondió para no repetir las fallas
+ * en cada mensaje. Si todos fallan, se devuelve un mensaje claro al usuario.
  */
-
-export const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-2.5-flash";
 
 /**
- * Modelo de respaldo si el principal está saturado (503). Más liviano y con
- * más cupo en el free tier. Se puede desactivar con GEMINI_MODELO_RESPALDO="".
+ * Cascada de modelos a probar, de más capaz a más liviano. 'gemini-flash-latest'
+ * es un alias que siempre apunta al modelo flash vigente, así que no se queda
+ * desactualizado. Los demás son fallbacks concretos. La variable
+ * GEMINI_MODELO, si se define, va primero.
  */
-export const GEMINI_MODELO_RESPALDO =
-  process.env.GEMINI_MODELO_RESPALDO ?? "gemini-2.5-flash-lite";
+const CASCADA_DEFECTO = [
+  "gemini-flash-latest",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-flash-latest-8b",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-pro-latest",
+];
+
+function cascada(): string[] {
+  const manual = (process.env.GEMINI_MODELO || "").trim();
+  const extra = (process.env.GEMINI_MODELO_RESPALDO || "").trim();
+  const lista = [manual, extra, ...CASCADA_DEFECTO].filter(Boolean);
+  return Array.from(new Set(lista));
+}
+
+/** Para que la UI muestre cuál se está usando, si es del interés. */
+export function cascadaModelos(): string[] {
+  return cascada();
+}
 
 export interface MensajeChat {
   rol: "usuario" | "ia";
@@ -28,6 +52,8 @@ export class GeminiError extends Error {
   constructor(
     mensaje: string,
     public saturado = false,
+    /** La API dice que este modelo no está disponible para esta cuenta. */
+    public noDisponible = false,
   ) {
     super(mensaje);
   }
@@ -52,6 +78,11 @@ interface Respuesta {
 export function iaDisponible() {
   return Boolean(process.env.GEMINI_API_KEY);
 }
+
+// En memoria por instancia: el modelo que respondió bien la última vez.
+// Vercel reparte las peticiones entre instancias, así que esto solo acelera
+// las siguientes llamadas dentro de la misma lambda.
+let modeloRecordado: string | null = null;
 
 async function llamarModelo(
   modelo: string,
@@ -88,12 +119,13 @@ async function llamarModelo(
 
   if (!res.ok) {
     const cuerpo = await res.text().catch(() => "");
-    // 429 = cuota diaria/por minuto llena. 503 = modelo saturado. Ambos son
-    // "intenta más tarde" o "prueba otro modelo".
+    // 404 = modelo no disponible para esta cuenta. 429 = cuota. 503 = saturado.
+    const noDisponible = res.status === 404;
     const saturado = res.status === 503 || res.status === 429;
     throw new GeminiError(
       `Gemini (${modelo}) respondió HTTP ${res.status}. ${cuerpo.slice(0, 300)}`.trim(),
       saturado,
+      noDisponible,
     );
   }
   const datos = (await res.json()) as Respuesta;
@@ -112,12 +144,7 @@ async function llamarModelo(
 
 /**
  * Envía la conversación a Gemini y devuelve el texto de la respuesta.
- * - `system` guía el estilo.
- * - `historial` es la conversación completa (la última entrada es el mensaje
- *   del usuario a responder).
- *
- * Si el modelo principal está saturado (503 / 429), reintenta con el modelo
- * de respaldo definido en GEMINI_MODELO_RESPALDO (por defecto el "-lite").
+ * Prueba los modelos en cascada hasta que uno responda.
  */
 export async function pedirRespuesta({
   system,
@@ -125,7 +152,7 @@ export async function pedirRespuesta({
 }: {
   system: string;
   historial: MensajeChat[];
-}): Promise<string> {
+}): Promise<{ texto: string; modelo: string }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key)
     throw new GeminiError(
@@ -137,33 +164,77 @@ export async function pedirRespuesta({
     parts: [{ text: m.texto }],
   }));
 
-  try {
-    return await llamarModelo(GEMINI_MODELO, key, system, contents);
-  } catch (e) {
-    if (
-      !(e instanceof GeminiError) ||
-      !e.saturado ||
-      !GEMINI_MODELO_RESPALDO ||
-      GEMINI_MODELO_RESPALDO === GEMINI_MODELO
-    )
-      throw e;
-    console.warn(
-      `[ia] ${GEMINI_MODELO} saturado, probando con ${GEMINI_MODELO_RESPALDO}`,
-    );
+  // El que funcionó la última vez primero; si no, la cascada
+  const ordenados = modeloRecordado
+    ? [modeloRecordado, ...cascada().filter((m) => m !== modeloRecordado)]
+    : cascada();
+
+  const fallos: string[] = [];
+  for (const modelo of ordenados) {
     try {
-      return await llamarModelo(
-        GEMINI_MODELO_RESPALDO,
-        key,
-        system,
-        contents,
-      );
-    } catch (e2) {
-      if (e2 instanceof GeminiError && e2.saturado)
-        throw new GeminiError(
-          "La IA está saturada en este momento. Vuelve a intentarlo en unos segundos.",
-          true,
+      const texto = await llamarModelo(modelo, key, system, contents);
+      modeloRecordado = modelo;
+      if (fallos.length)
+        console.warn(
+          `[ia] respondió ${modelo} después de descartar ${fallos.join(", ")}`,
         );
-      throw e2;
+      return { texto, modelo };
+    } catch (e) {
+      if (e instanceof GeminiError) {
+        // Si no está disponible o la cuota se agotó o está saturado, probamos
+        // el siguiente de la cascada. Otros errores (p. ej. 400 por payload)
+        // los re-lanzamos porque cambiar de modelo no los arregla.
+        if (e.noDisponible || e.saturado) {
+          fallos.push(modelo);
+          modeloRecordado = null;
+          continue;
+        }
+        throw e;
+      }
+      throw e;
     }
   }
+
+  throw new GeminiError(
+    `Tu API key de Gemini no pudo usar ninguno de los modelos probados (${ordenados.join(", ")}). Revisa en /api/ia/diagnostico qué modelos ofrece tu cuenta.`,
+    true,
+  );
+}
+
+/**
+ * Lista los modelos disponibles para esta API key llamando a /v1beta/models.
+ * Útil para diagnosticar cuando la cascada no acierta.
+ */
+export async function listarModelos(): Promise<
+  | { ok: true; modelos: { nombre: string; generaContenido: boolean }[] }
+  | { ok: false; error: string }
+> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return { ok: false, error: "Falta GEMINI_API_KEY." };
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+  if (!res.ok) {
+    const cuerpo = await res.text().catch(() => "");
+    return {
+      ok: false,
+      error: `HTTP ${res.status}. ${cuerpo.slice(0, 300)}`.trim(),
+    };
+  }
+  const datos = (await res.json()) as {
+    models?: {
+      name?: string;
+      supportedGenerationMethods?: string[];
+    }[];
+  };
+  const modelos = (datos.models ?? [])
+    .map((m) => ({
+      nombre: (m.name ?? "").replace(/^models\//, ""),
+      generaContenido: (m.supportedGenerationMethods ?? []).includes(
+        "generateContent",
+      ),
+    }))
+    .filter((m) => m.nombre);
+  return { ok: true, modelos };
 }
