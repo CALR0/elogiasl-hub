@@ -2,6 +2,7 @@
 
 import { Bot, MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Markdown } from "@/components/ia/markdown";
 import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { buttonClasses } from "@/components/ui/button";
 import { cx } from "@/lib/utils";
@@ -201,13 +202,13 @@ function Burbuja({ mensaje }: { mensaje: Mensaje }) {
     <li className={cx("flex flex-col", esIA ? "items-start" : "items-end")}>
       <div
         className={cx(
-          "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
+          "max-w-[85%] rounded-lg px-3 py-2 text-sm break-words",
           esIA
             ? "bg-secondary text-foreground"
-            : "bg-primary text-primary-foreground",
+            : "bg-primary text-primary-foreground whitespace-pre-wrap",
         )}
       >
-        {mensaje.texto}
+        {esIA ? <Markdown texto={mensaje.texto} /> : mensaje.texto}
       </div>
       {esIA && mensaje.modelo && (
         <span className="mt-0.5 px-1 text-[10px] text-muted-foreground">
