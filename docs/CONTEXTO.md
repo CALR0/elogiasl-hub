@@ -421,10 +421,19 @@ manifiestos del Ministerio (RNDC vía Colombia Software), SICETAC o no.
   modelo que acertó para no repetir las fallas. Si la cascada entera falla, el mensaje al usuario
   es "La IA está ocupada, vuelve a intentarlo". Timeout por intento: **20 s**.
 - **Analizador de manifiesto** `lib/ia/analizar-manifiesto.ts` — dado un número detectado en el
-  mensaje, llama `consultarMinisterio` y arma un bloque de contexto con **las 7 secciones del
-  acordeón** (Clientes, Tercero, Remitente, Destinatario, Vehículo, Remesa, Manifiesto). Cada
-  entrada marcada como `OK` / `ERROR XXX999` / `SIN CONFIRMAR`. Adjunta los XML de las entradas
-  con error (hasta 3), recortados a 6 KB (inicio + final) para no gastar tokens.
+  mensaje, consulta en paralelo el **web service RNDC** (`consultarRadicado`, proceso 4, tipo 3
+  → INGRESOID) y la **página** (`consultarMinisterio`). El RNDC es fuente de verdad: si trae
+  radicado, el manifiesto ya subió aunque la página esté vacía. De la página arma un bloque con
+  **las 7 secciones del acordeón** (Clientes, Tercero, Remitente, Destinatario, Vehículo, Remesa,
+  Manifiesto). Cada entrada marcada como `OK` / `ERROR XXX999` / `SIN CONFIRMAR`. Adjunta los XML
+  de las entradas con error (hasta 3), recortados a 6 KB.
+- **Analizador de cumplido** `lib/ia/analizar-cumplido.ts` — mismo patrón, para el cumplido del
+  mismo manifiesto. En paralelo: `consultarRadicadoCumplido` (proceso 6, tipo 3) y
+  `consultarCumplido` (`consumoministeriocumplido.php`). El contexto lista las remesas del
+  manifiesto con su estado y radicado RNDC (sin radicado en remesa el cumplido del manifiesto da
+  CMA110), los códigos de error del último intento (CMA110, CMA262, CMA273) y el XML enviado del
+  cumplido recortado. El route llama a los dos analizadores en paralelo (Promise.all) y los une
+  en el prompt separados por `---`.
 - **Parser del ministerio** `lib/sicetac/ministerio.ts` reescrito para extraer esas 7 secciones
   (antes solo "Envío de Manifiesto"). Función `codigosDeError()` detecta `[A-Z]{3}\d{3}` en los
   mensajes (MANxxx, REMxxx, VEHxxx, TERxxx, CMAxxx). El XML de los enlaces `consumoministerioxml.php`

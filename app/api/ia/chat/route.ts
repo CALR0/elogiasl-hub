@@ -1,6 +1,10 @@
 import { getUsuarioActual } from "@/lib/auth";
 import { cuerpoJson, json } from "@/lib/api/guardia.ts";
 import {
+  analizarCumplido,
+  contextoCumplidoParaIA,
+} from "@/lib/ia/analizar-cumplido.ts";
+import {
   analizarManifiesto,
   contextoParaIA,
   detectarManifiesto,
@@ -101,6 +105,51 @@ Si el código que aparece NO está en esta lista, explica literalmente lo
 que diga el mensaje del Ministerio y señala en qué sección/XML cae, pero
 no inventes la causa.
 
+CUMPLIDO DEL MANIFIESTO (proceso 6 del RNDC)
+Después del contexto del manifiesto, el sistema añade otro bloque con el
+CUMPLIDO del mismo manifiesto. Léelo con la misma lógica:
+
+  1. CONSULTA AL WEB SERVICE DEL RNDC — fuente de verdad del cumplido
+     (proceso 6, tipo 3 → INGRESOID). Si dice "Cumplido YA RADICADO",
+     el cumplido del manifiesto ya subió y el usuario no tiene que
+     reenviarlo.
+  2. PÁGINA consumoministeriocumplido.php — último mensaje del envío del
+     cumplido + lista de REMESAS del manifiesto con su estado y radicado
+     RNDC. ANTES de poder radicar el cumplido del manifiesto, CADA remesa
+     debe tener su propio cumplido radicado en el RNDC; si alguna remesa
+     no lo tiene, el cumplido del manifiesto da CMA110.
+
+Códigos conocidos del cumplido (prefijo CMA):
+
+  CMA110 "No se encontró cumplido de la remesa".
+    Alguna remesa del manifiesto aún no tiene cumplido radicado en el
+    RNDC (en la lista de remesas verás "sin radicado RNDC"). Solución:
+    cumplir primero esas remesas con el módulo "Migración cumplido RNDC"
+    (hace eso mismo: cumple cada remesa pendiente, toma el flete pactado
+    del RNDC y luego radica el cumplido del manifiesto).
+
+  CMA262 "Falta la retención en la fuente".
+    Solución: el módulo "Migración cumplido RNDC" la agrega al XML y
+    radica. Lo que el equipo debe hacer es procesar el manifiesto en ese
+    módulo.
+
+  CMA273 "Retenciones inconsistentes".
+    El RNDC tiene un flete pactado diferente al de Silogtran (p. ej.
+    tras un ajuste SICETAC) y por eso las retenciones no cuadran.
+    Solución: también el módulo "Migración cumplido RNDC" — recalcula
+    RETENCIONFOPAT (0,1 %) y RETENCIONFUENTEMANIFIESTO (1 %) con el
+    flete real del RNDC y radica.
+
+Para cualquier código CMA no listado: dile al usuario lo que dice el
+mensaje y en qué remesa/XML cae, sin inventar.
+
+Si el usuario pregunta por "el cumplido", "cumplido del manifiesto",
+"cumplir el manifiesto" o "radicar el cumplido", apóyate en el BLOQUE
+DEL CUMPLIDO. Si pregunta genéricamente ("¿subió este manifiesto?"),
+responde por el bloque del MANIFIESTO y, cuando sea útil, menciona en
+una línea el estado del cumplido (ej. "El manifiesto ya está radicado,
+pero su cumplido aún no").
+
 Reglas:
 - Responde SIEMPRE en español.
 - El contexto es tu ÚNICA fuente de verdad para ese manifiesto. No inventes
@@ -196,8 +245,15 @@ export async function POST(req: Request) {
 
   let contexto: string | null = null;
   if (numero && /^\d{5,20}$/.test(numero)) {
-    const analisis = await analizarManifiesto(numero);
-    contexto = contextoParaIA(analisis);
+    // Siempre analizamos ambas cosas: manifiesto y cumplido. Elia decide con
+    // el contexto cuál le interesa al usuario; si pregunta solo por uno,
+    // menciona lo del otro de pasada cuando aporte (p. ej. "el manifiesto
+    // ya está radicado, pero el cumplido aún no").
+    const [aManifiesto, aCumplido] = await Promise.all([
+      analizarManifiesto(numero),
+      analizarCumplido(numero),
+    ]);
+    contexto = `${contextoParaIA(aManifiesto)}\n\n---\n\n${contextoCumplidoParaIA(aCumplido)}`;
   }
 
   const historialConContexto: MensajeChat[] = contexto
