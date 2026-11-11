@@ -4,21 +4,27 @@ import type { ResultadoConsulta, Vehiculo, ViajeResumen } from "./tipos";
 /*
  * Cliente HTTP del servicio Control T (monitoreo de flotas en Colombia).
  *
- * Dos APIs diferentes, un solo token Bearer:
- *   • API Public  (/apipublic/*)   — login y Resume (JSON).
- *   • API Web     (/APP/ApiWeb/*)  — CurrentLocation (multipart/form-data).
+ * Un solo token Bearer sirve para TODOS los endpoints:
+ *   • API v1       (/v1/Security/Login, /v1/hub/last/{placa}) — login OAuth
+ *                  por x-www-form-urlencoded y ubicación por placa.
+ *   • API Public   (/apipublic/api/Resume, /apipublic/api/Travel/search) —
+ *                  viajes activos y programados.
  *
- * Portado de TVIEWER (controlt-mapa). En el portal no hay proxy ni navegador:
- * todas las llamadas salen del servidor, el token vive en memoria del runtime
- * (sesion-servicio.ts) y el cliente nunca lo ve.
+ * Antes se usaba /apipublic/api/login/oauth (JSON) y /APP/ApiWeb/CurrentLocation
+ * (multipart). Migrado a /v1/Security/Login + /v1/hub/last/{placa} (Bearer,
+ * JSON), que es la API actual de Control T.
+ *
+ * En el portal no hay proxy ni navegador: todas las llamadas salen del
+ * servidor, el token vive en memoria del runtime (sesion-servicio.ts) y el
+ * cliente nunca lo ve.
  */
 
 export const BASE_URL =
   process.env.CONTROLT_BASE_URL || "https://app.controlt.com.co";
 
-const LOGIN_PATH = "/apipublic/api/login/oauth";
+const LOGIN_PATH = "/v1/Security/Login";
 const RESUME_PATH = "/apipublic/api/Resume";
-const API_WEB = "/APP/ApiWeb";
+const HUB_LAST_PATH = "/v1/hub/last";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
@@ -45,23 +51,30 @@ export interface LoginRespuesta {
 }
 
 /**
- * Obtiene un token Bearer. Usa Content-Type: application/json (no urlencoded).
- * La respuesta incluye expires_in en segundos (tviewer lo confirmó ~43200 s / 12 h).
+ * Obtiene un token Bearer con el flujo OAuth2 "password" de Control T:
+ * POST /v1/Security/Login con body x-www-form-urlencoded
+ * (username, password, grant_type=password). La respuesta trae access_token
+ * y expires_in en segundos (observado ~86400, es decir 24 h).
  */
 export async function iniciarSesion(
   usuario: string,
   clave: string,
 ): Promise<LoginRespuesta> {
+  const body = new URLSearchParams();
+  body.set("username", usuario);
+  body.set("password", clave);
+  body.set("grant_type", "password");
+
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${LOGIN_PATH}`, {
       method: "POST",
       headers: {
-        "content-type": "application/json",
+        "content-type": "application/x-www-form-urlencoded",
         accept: "application/json",
         "user-agent": UA,
       },
-      body: JSON.stringify({ username: usuario, password: clave }),
+      body: body.toString(),
       signal: AbortSignal.timeout(60_000),
     });
   } catch (e) {
@@ -92,8 +105,8 @@ export async function iniciarSesion(
     throw new ControlTError("Control T no devolvió un token de acceso.");
   }
 
-  // expires_in llega en segundos (confirmado). Margen de 60 s por si el reloj se desfasa.
-  const segundos = Math.max(60, Number(datos.expires_in) || 43_200);
+  // expires_in llega en segundos. Margen de 60 s por si el reloj se desfasa.
+  const segundos = Math.max(60, Number(datos.expires_in) || 86_400);
   return { token, venceEnMs: Date.now() + segundos * 1000 };
 }
 
@@ -181,37 +194,80 @@ async function pedirTravelSearch(
   return Array.isArray(datos) ? (datos as Array<Record<string, unknown>>) : [];
 }
 
-async function pedirCurrentLocation(
+/**
+ * Última posición reportada para UNA placa (GET /v1/hub/last/{placa}, Bearer).
+ * Respuesta: { Code, Errors, Result: { register: {...} } }. 404 o Result null
+ * = la placa no tiene reporte: devolvemos null (no es error).
+ */
+async function pedirUbicacionHub(
   token: string,
-  placas: string[],
-): Promise<Array<Record<string, unknown>>> {
-  const form = new FormData();
-  form.set("token", token);
-  form.set("licensePlate", placas.join(","));
-
+  placa: string,
+): Promise<Record<string, unknown> | null> {
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${API_WEB}/CurrentLocation`, {
-      method: "POST",
-      headers: { accept: "application/json", "user-agent": UA },
-      body: form,
-      signal: AbortSignal.timeout(60_000),
-    });
+    res = await fetch(
+      `${BASE_URL}${HUB_LAST_PATH}/${encodeURIComponent(placa)}`,
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+          "user-agent": UA,
+        },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
   } catch (e) {
     throw new ControlTError(
       `No se pudo contactar a Control T: ${(e as Error).message}`,
     );
   }
+  if (res.status === 401) {
+    throw new ControlTError("El token de Control T fue rechazado.", {
+      tokenInvalido: true,
+    });
+  }
+  if (res.status === 404) return null;
   if (!res.ok) {
     throw new ControlTError(
-      `Control T respondió HTTP ${res.status} al consultar la ubicación.`,
+      `Control T respondió HTTP ${res.status} al consultar hub/last/${placa}.`,
     );
   }
-  const datos = (await res.json().catch(() => null)) as unknown;
-  // Devuelve objeto si hay una sola placa, arreglo si hay varias.
-  if (!datos) return [];
-  if (Array.isArray(datos)) return datos as Array<Record<string, unknown>>;
-  return [datos as Record<string, unknown>];
+  const datos = (await res.json().catch(() => null)) as {
+    Code?: number;
+    Result?: { register?: Record<string, unknown> | null } | null;
+  } | null;
+  return datos?.Result?.register ?? null;
+}
+
+/**
+ * Trae la última posición para varias placas (una llamada por placa, en
+ * paralelo). El primer 401 interrumpe el lote (se re-hace login y reintenta).
+ */
+async function pedirCurrentLocation(
+  token: string,
+  placas: string[],
+): Promise<Array<Record<string, unknown>>> {
+  if (!placas.length) return [];
+  let tokenInvalido: ControlTError | null = null;
+  const resultados = await Promise.all(
+    placas.map(async (p) => {
+      try {
+        return await pedirUbicacionHub(token, p);
+      } catch (e) {
+        if (e instanceof ControlTError && e.tokenInvalido) {
+          tokenInvalido = e;
+          return null;
+        }
+        // Otros errores por placa: se ignoran para no tumbar el lote completo
+        return null;
+      }
+    }),
+  );
+  if (tokenInvalido) throw tokenInvalido;
+  return resultados.filter(
+    (r): r is Record<string, unknown> => r !== null && r !== undefined,
+  );
 }
 
 // ─── Normalizadores ─────────────────────────────────────────────────────────
@@ -236,11 +292,14 @@ function normalizarVehiculo(raw: Record<string, unknown>): Vehiculo | null {
   const lat = asNum(raw.Latitude);
   const lng = asNum(raw.Longitude);
   if (!placa || lat === null || lng === null) return null;
+  // /v1/hub/last trae DateGPS como "DD/MM/YYYY HH:MM:SS AM/PM" (ya es fecha +
+  // hora). El viejo CurrentLocation traía FullDateGPSFormat con el mismo
+  // propósito. Description_Address solo venía en el viejo: null si no está.
   return {
     placa: placa.toUpperCase(),
     latitud: lat,
     longitud: lng,
-    fechaGps: asStr(raw.FullDateGPSFormat),
+    fechaGps: asStr(raw.FullDateGPSFormat) ?? asStr(raw.DateGPS),
     prestadorGps: asStr(raw.username),
     direccion: asStr(raw.Description_Address),
     temperatura: asNum(raw.Temperature1),
