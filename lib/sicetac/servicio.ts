@@ -4,10 +4,10 @@ import { conSilogtran, type Actor } from "@/lib/silogtran/sesion-servicio.ts";
 import { consultarMinisterio } from "./ministerio.ts";
 import { calcularSicetac } from "./portal.ts";
 import { leerRemesa, tipoCargaSicetac } from "./remesa.ts";
+import { leerManifiestoSilogtran } from "./manifiesto-silogtran.ts";
 import {
   accesoRndc,
   configuracionVehiculo,
-  consultarDatosManifiesto,
   consultarRadicado,
   expedirManifiestoRndc,
 } from "./rndc.ts";
@@ -179,36 +179,55 @@ export async function calcular(
     );
   // Fallback para el chat IA: si la página del Ministerio ya no guarda el
   // XML (manifiestos radicados hace tiempo, la página puede estar vacía),
-  // recuperamos los datos del propio RNDC (proceso 4, tipo 3) para poder
-  // calcular. Esto SOLO en modo informativo: procesar() exige el XML real
-  // del último intento.
-  const desdeRndc =
-    opciones.soloInformativo && !ministerio.xml ? acceso : null;
+  // leemos los datos del manifiesto directamente de Silogtran (la misma
+  // vista Despacho › Manifiesto que abre la persona). Esto SOLO en modo
+  // informativo: procesar() exige el XML real del último intento para
+  // ajustarlo y reenviarlo.
   let d: DatosManifiestoXml;
   let original: string | null = ministerio.xml;
 
-  if (desdeRndc) {
-    const datos = await consultarDatosManifiesto(desdeRndc, nit, manifiesto);
-    if (!datos || !datos.remesa)
+  if (opciones.soloInformativo && !ministerio.xml) {
+    let m;
+    try {
+      m = leerManifiestoSilogtran(
+        await conSilogtran(actor, (cli) => cli.paginaManifiesto(manifiesto)),
+      );
+    } catch (e) {
+      if (e instanceof SilogtranError)
+        return sinXml(vacio(manifiesto, "error", e.message), null);
+      throw e;
+    }
+    if (!m.placa || !m.origen || !m.destino || !m.remesas.length || !m.flete)
       return sinXml(
         vacio(
           manifiesto,
           "error",
-          "El RNDC no tiene los datos de este manifiesto para recalcular el SICETAC.",
+          `No se pudieron leer todos los datos del manifiesto ${manifiesto} en Silogtran.`,
+        ),
+      );
+    // Acceso para el proceso 12 (configuración del vehículo): el del env o
+    // el que ya extrajimos de la página del Ministerio (acá no hay XML).
+    const accesoRndcDisp = acceso ?? null;
+    if (!accesoRndcDisp)
+      return sinXml(
+        vacio(
+          manifiesto,
+          "error",
+          "Para consultar la configuración del vehículo en el RNDC se necesitan RNDC_USUARIO y RNDC_CLAVE.",
         ),
       );
     d = {
       manifiesto,
       nit,
-      origen: datos.origen,
-      destino: datos.destino,
-      placa: datos.placa,
-      remolque: datos.remolque,
-      flete: datos.flete,
-      retencionFuente: datos.retencionFuente,
-      retencionFopat: datos.retencionFopat,
-      remesas: [datos.remesa],
-      acceso: desdeRndc,
+      origen: m.origen,
+      destino: m.destino,
+      placa: m.placa,
+      remolque: m.remolque,
+      flete: m.flete,
+      retencionFuente: m.retencionFuente,
+      retencionFopat: m.retencionFopat,
+      remesas: m.remesas,
+      acceso: accesoRndcDisp,
     };
   } else {
     if (!ministerio.xml)

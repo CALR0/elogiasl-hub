@@ -26,6 +26,8 @@ const TERCERO_PAGE = (codigo: string) =>
   `index.php?page=Maestros.Tercero.Home_111&tercero_codigo=${Number.parseInt(codigo, 10)}`;
 const REMESA_PAGE = (codigo: string) =>
   `index.php?page=Despacho.Remesa_003.Home_111&remesa_codigo=${encodeURIComponent(codigo)}`;
+const MANIFIESTO_PAGE = (codigo: string) =>
+  `index.php?page=Despacho.Manifiesto_003.Home_111&manifiesto_codigo=${encodeURIComponent(codigo)}`;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
@@ -475,6 +477,23 @@ export class Silogtran {
       if (!r.text.includes("tiempoCarguePactado"))
         throw new SilogtranError(
           `No se encontró la remesa ${codigo} en Silogtran.`,
+        );
+      return r.text;
+    });
+  }
+
+  /** HTML del manifiesto (placa, remolque, DANE origen/destino, flete y remesa). */
+  paginaManifiesto(codigo: string) {
+    return this.enCola(async () => {
+      const r = await this.html(MANIFIESTO_PAGE(codigo));
+      if (esLogin(r.text))
+        throw new SilogtranError("La sesión de Silogtran expiró.", {
+          sesionExpirada: true,
+        });
+      // Marcador estable de la vista del manifiesto en Silogtran (el input del flete).
+      if (!r.text.includes("valorFletePactadoViaje"))
+        throw new SilogtranError(
+          `No se encontró el manifiesto ${codigo} en Silogtran.`,
         );
       return r.text;
     });
