@@ -333,6 +333,71 @@ export async function consultarFletePactado(
   return Number.isFinite(valor) ? valor : null;
 }
 
+export interface DatosManifiestoRndc {
+  placa: string;
+  remolque: string | null;
+  origen: string;
+  destino: string;
+  flete: number;
+  retencionFuente: number;
+  retencionFopat: number;
+  /** Primera remesa asociada al manifiesto, para luego leerla en Silogtran. */
+  remesa: string | null;
+}
+
+/**
+ * Proceso 4, consulta (tipo 3): recupera los datos clave del manifiesto que
+ * sirven para recalcular el SICETAC (placa, remolque, DANE origen/destino,
+ * flete, retenciones y una remesa asociada). Útil cuando la página del
+ * ministerio ya no guarda el XML original (manifiestos radicados hace
+ * tiempo).
+ */
+export async function consultarDatosManifiesto(
+  acceso: AccesoRndc,
+  nit: string,
+  manifiesto: string,
+): Promise<DatosManifiestoRndc | null> {
+  const variables = [
+    "NUMPLACA",
+    "NUMPLACAREMOLQUE",
+    "CODMUNICIPIOORIGENMANIFIESTO",
+    "CODMUNICIPIODESTINOMANIFIESTO",
+    "VALORFLETEPACTADOVIAJE",
+    "RETENCIONFUENTEMANIFIESTO",
+    "RETENCIONFOPAT",
+    "CONSECUTIVOREMESA",
+  ].join(",");
+  const interno =
+    "<?xml version='1.0' encoding='ISO-8859-1' ?><root>" +
+    `<acceso><username>${esc(acceso.username)}</username><password>${esc(acceso.password)}</password></acceso>` +
+    "<solicitud><tipo>3</tipo><procesoid>4</procesoid></solicitud>" +
+    `<variables>${variables}</variables>` +
+    `<documento><NUMNITEMPRESATRANSPORTE>${esc(nit)}</NUMNITEMPRESATRANSPORTE>` +
+    `<NUMMANIFIESTOCARGA>${esc(manifiesto)}</NUMMANIFIESTOCARGA></documento></root>`;
+  const xml = await enviarRndc(RNDC_CONSULTA, interno);
+  const error = errorRndc(xml);
+  if (error && /RNDC11|no encontrado/i.test(error)) return null;
+  if (error)
+    throw new ErrorRndc(`RNDC (datos del manifiesto ${manifiesto}): ${error}`);
+
+  const num = (nombre: string) =>
+    Number.parseFloat(
+      String(etiqueta(xml, nombre) ?? "").replace(/[^\d]/g, ""),
+    ) || 0;
+  const str = (nombre: string) => (etiqueta(xml, nombre) ?? "").trim();
+  const remolque = str("numplacaremolque");
+  return {
+    placa: str("numplaca"),
+    remolque: remolque && remolque !== "-" ? remolque : null,
+    origen: str("codmunicipioorigenmanifiesto"),
+    destino: str("codmunicipiodestinomanifiesto"),
+    flete: num("valorfletepactadoviaje"),
+    retencionFuente: num("retencionfuentemanifiesto"),
+    retencionFopat: num("retencionfopat"),
+    remesa: str("consecutivoremesa") || null,
+  };
+}
+
 /**
  * Acceso al web service RNDC: el de las variables de entorno (RNDC_USUARIO /
  * RNDC_CLAVE / RNDC_NIT) o, si no están, el que trae el XML que armó Colombia

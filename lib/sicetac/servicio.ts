@@ -7,10 +7,16 @@ import { leerRemesa, tipoCargaSicetac } from "./remesa.ts";
 import {
   accesoRndc,
   configuracionVehiculo,
+  consultarDatosManifiesto,
   consultarRadicado,
   expedirManifiestoRndc,
 } from "./rndc.ts";
-import { ajustarXml, leerXmlManifiesto, valoresAjustados } from "./xml.ts";
+import {
+  ajustarXml,
+  type DatosManifiestoXml,
+  leerXmlManifiesto,
+  valoresAjustados,
+} from "./xml.ts";
 
 /*
  * Expedir manifiesto SICETAC (Despacho › Manifiesto). procesar() hace todo en
@@ -171,29 +177,63 @@ export async function calcular(
         `El manifiesto ya está expedido. ${ministerio.mensaje}`,
       ),
     );
-  if (!ministerio.xml)
-    return sinXml(
-      vacio(
-        manifiesto,
-        "error",
-        ministerio.mensaje ||
-          (acceso
-            ? "No se encontró el envío de este manifiesto al Ministerio."
-            : "No se encontró el envío de este manifiesto al Ministerio y no se pudo consultar su radicado: configura RNDC_USUARIO y RNDC_CLAVE."),
-      ),
-    );
-  const original = ministerio.xml;
-  if (!opciones.soloInformativo && !ministerio.errorSicetac)
-    return sinXml(
-      vacio(
-        manifiesto,
-        "error",
-        `El último envío no falló por SICETAC, así que no se ajusta. Respuesta del Ministerio: ${ministerio.mensaje || "(sin mensaje)"}`,
-      ),
-      original,
-    );
+  // Fallback para el chat IA: si la página del Ministerio ya no guarda el
+  // XML (manifiestos radicados hace tiempo, la página puede estar vacía),
+  // recuperamos los datos del propio RNDC (proceso 4, tipo 3) para poder
+  // calcular. Esto SOLO en modo informativo: procesar() exige el XML real
+  // del último intento.
+  const desdeRndc =
+    opciones.soloInformativo && !ministerio.xml ? acceso : null;
+  let d: DatosManifiestoXml;
+  let original: string | null = ministerio.xml;
 
-  const d = leerXmlManifiesto(original);
+  if (desdeRndc) {
+    const datos = await consultarDatosManifiesto(desdeRndc, nit, manifiesto);
+    if (!datos || !datos.remesa)
+      return sinXml(
+        vacio(
+          manifiesto,
+          "error",
+          "El RNDC no tiene los datos de este manifiesto para recalcular el SICETAC.",
+        ),
+      );
+    d = {
+      manifiesto,
+      nit,
+      origen: datos.origen,
+      destino: datos.destino,
+      placa: datos.placa,
+      remolque: datos.remolque,
+      flete: datos.flete,
+      retencionFuente: datos.retencionFuente,
+      retencionFopat: datos.retencionFopat,
+      remesas: [datos.remesa],
+      acceso: desdeRndc,
+    };
+  } else {
+    if (!ministerio.xml)
+      return sinXml(
+        vacio(
+          manifiesto,
+          "error",
+          ministerio.mensaje ||
+            (acceso
+              ? "No se encontró el envío de este manifiesto al Ministerio."
+              : "No se encontró el envío de este manifiesto al Ministerio y no se pudo consultar su radicado: configura RNDC_USUARIO y RNDC_CLAVE."),
+        ),
+      );
+    original = ministerio.xml;
+    if (!opciones.soloInformativo && !ministerio.errorSicetac)
+      return sinXml(
+        vacio(
+          manifiesto,
+          "error",
+          `El último envío no falló por SICETAC, así que no se ajusta. Respuesta del Ministerio: ${ministerio.mensaje || "(sin mensaje)"}`,
+        ),
+        original,
+      );
+    d = leerXmlManifiesto(original);
+  }
   if (!d.remesas.length)
     return sinXml(
       vacio(manifiesto, "error", "El XML del manifiesto no trae remesas."),
@@ -294,7 +334,10 @@ export async function calcular(
       envio: null,
     },
     xmlOriginal: original,
-    xmlCorregido: ajustarXml(original, nuevo),
+    // Sin XML original (fallback RNDC del chat informativo) no se ajusta
+    // nada: procesar() exige el XML del último intento y nunca llega aquí
+    // sin él.
+    xmlCorregido: original ? ajustarXml(original, nuevo) : null,
   };
 }
 
