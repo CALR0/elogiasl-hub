@@ -224,8 +224,13 @@ export async function pedirRespuesta({
     }
   }
 
+  // El detalle (qué modelos se probaron) solo al log del servidor; al usuario
+  // le llega un mensaje corto para que vuelva a intentar.
+  console.warn(
+    `[ia] ningún modelo respondió. Probados: ${ordenados.join(", ")}. Fallaron: ${fallos.join(", ")}`,
+  );
   throw new GeminiError(
-    `Tu API key de Gemini no pudo usar ninguno de los modelos probados (${ordenados.join(", ")}). Revisa en /api/ia/diagnostico qué modelos ofrece tu cuenta.`,
+    "La IA está ocupada en este momento. Vuelve a intentarlo en unos segundos.",
     true,
   );
 }
