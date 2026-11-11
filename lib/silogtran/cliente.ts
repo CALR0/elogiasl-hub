@@ -28,6 +28,8 @@ const REMESA_PAGE = (codigo: string) =>
   `index.php?page=Despacho.Remesa_003.Home_111&remesa_codigo=${encodeURIComponent(codigo)}`;
 const MANIFIESTO_PAGE = (codigo: string) =>
   `index.php?page=Despacho.Manifiesto_003.Home_111&manifiesto_codigo=${encodeURIComponent(codigo)}`;
+const CIUDAD_PAGE = (codigo: string) =>
+  `index.php?page=Basicos.Ciudad.Home&ciudad_codigo=${encodeURIComponent(codigo)}`;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
@@ -482,7 +484,7 @@ export class Silogtran {
     });
   }
 
-  /** HTML del manifiesto (placa, remolque, DANE origen/destino, flete y remesa). */
+  /** HTML del manifiesto (placa, remolque, código de ciudad origen/destino, flete, remesas). */
   paginaManifiesto(codigo: string) {
     return this.enCola(async () => {
       const r = await this.html(MANIFIESTO_PAGE(codigo));
@@ -490,10 +492,28 @@ export class Silogtran {
         throw new SilogtranError("La sesión de Silogtran expiró.", {
           sesionExpirada: true,
         });
-      // Marcador estable de la vista del manifiesto en Silogtran (el input del flete).
-      if (!r.text.includes("valorFletePactadoViaje"))
+      // Marcador estable: el input del flete del manifiesto.
+      if (!r.text.includes("manifiesto_flete"))
         throw new SilogtranError(
           `No se encontró el manifiesto ${codigo} en Silogtran.`,
+        );
+      return r.text;
+    });
+  }
+
+  /** HTML de la ciudad (nombre y DANE del municipio). El código es el INTERNO
+   * de Silogtran, no el DANE: se obtiene de la página del manifiesto o de la
+   * remesa. */
+  paginaCiudad(codigo: string) {
+    return this.enCola(async () => {
+      const r = await this.html(CIUDAD_PAGE(codigo));
+      if (esLogin(r.text))
+        throw new SilogtranError("La sesión de Silogtran expiró.", {
+          sesionExpirada: true,
+        });
+      if (!r.text.includes("ciudad_codigodane"))
+        throw new SilogtranError(
+          `No se encontró la ciudad con código ${codigo} en Silogtran.`,
         );
       return r.text;
     });

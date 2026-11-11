@@ -1,9 +1,18 @@
 /*
  * Parser de la página del manifiesto de Silogtran
- * (Despacho.Manifiesto_003.Home_111). Mismo patrón que leerRemesa: todos los
- * inputs del PRADO form tienen el prefijo `ctl0_MainModule_` + nombre
- * similar al del XML del RNDC. Se usa como fallback del cálculo informativo
- * del SICETAC cuando la página del Ministerio ya no guarda el XML.
+ * (Despacho.Manifiesto_003.Home_111). IDs verificados en vivo contra la
+ * instancia real de Elogia (construproyec):
+ *   - ctl0_MainModule_vehiculo_codigo          → placa del cabezote
+ *   - ctl0_MainModule_trailer_placa            → placa del remolque ("" o "-")
+ *   - ctl0_MainModule_ciudad_codigo_origen     → código INTERNO de ciudad
+ *   - ctl0_MainModule_ciudad_codigo_destino    → código INTERNO de ciudad
+ *   - ctl0_MainModule_manifiesto_flete         → "4,950,000"
+ *   - ctl0_MainModule_manifiesto_impuesto      → retención en la fuente
+ *   - Tabla ctl0_MainModule_ItemsManifiesto    → remesas asociadas
+ *
+ * Los códigos de ciudad son INTERNOS de Silogtran, NO son DANE. Para
+ * obtener el DANE se consulta por separado Basicos.Ciudad.Home con ese
+ * código (ver ciudad-silogtran.ts).
  */
 
 const PFX = "ctl0_MainModule_";
@@ -14,63 +23,44 @@ function valorInput(html: string, id: string): string | null {
   return v ? v[1].trim() : null;
 }
 
-function valorSelect(html: string, id: string): string | null {
-  const bloque = new RegExp(
-    `<select[^>]*\\bid="${id}"[^>]*>[\\s\\S]*?<\\/select>`,
-    "i",
-  ).exec(html);
-  if (!bloque) return null;
-  const sel = /<option[^>]*selected[^>]*value="([^"]*)"/i.exec(bloque[0]);
-  return sel ? sel[1].trim() : null;
-}
-
-/** Busca el valor del input, y si no, el del select con el mismo id. */
-function valorCampo(html: string, id: string): string | null {
-  return valorInput(html, id) ?? valorSelect(html, id);
-}
-
 const numero = (s: string | null) =>
   Number.parseFloat(String(s ?? "").replace(/[^\d]/g, "")) || 0;
 
 export interface ManifiestoSilogtran {
   placa: string;
   remolque: string | null;
-  /** DANE del municipio origen (puede traer ceros iniciales). */
-  origen: string;
-  destino: string;
+  /** Código INTERNO de Silogtran, NO es DANE. Hay que mapearlo con paginaCiudad. */
+  codigoCiudadOrigen: string;
+  codigoCiudadDestino: string;
   flete: number;
+  /** Retención en la fuente (campo "Impuesto" en la vista). */
   retencionFuente: number;
-  retencionFopat: number;
-  /** Lista de remesas asociadas al manifiesto. */
+  /** Lista de remesas asociadas (códigos de 10 dígitos). */
   remesas: string[];
 }
 
 /** Lee los datos clave del manifiesto desde su página en Silogtran. */
 export function leerManifiestoSilogtran(html: string): ManifiestoSilogtran {
-  const remolque =
-    (valorCampo(html, `${PFX}numPlacaRemolque`) ?? "").trim() || null;
-  // La tabla de remesas de un manifiesto suele llamarse ItemsRemesa /
-  // ItemsRemesas en el form del PRADO. Extraemos los códigos (números largos).
+  const remolque = (valorInput(html, `${PFX}trailer_placa`) ?? "").trim();
+  // La tabla de remesas es ItemsManifiesto (verificado). Cada remesa es un
+  // código numérico de 10 dígitos (NUMMANIFIESTOCARGA formato RNDC).
   const tabla =
     new RegExp(
-      `<table[^>]*\\bid="${PFX}(?:ItemsRemesa|ItemsRemesas|GridRemesas)"[\\s\\S]*?<\\/table>`,
+      `<table[^>]*\\bid="${PFX}ItemsManifiesto"[\\s\\S]*?<\\/table>`,
       "i",
     ).exec(html)?.[0] ?? "";
   const remesas = Array.from(
-    new Set(
-      [...tabla.matchAll(/>\s*(\d{6,20})\s*</g)].map((m) => m[1]),
-    ),
+    new Set([...tabla.matchAll(/>\s*(\d{10})\s*</g)].map((m) => m[1])),
   );
   return {
-    placa: (valorCampo(html, `${PFX}numPlaca`) ?? "").trim(),
-    remolque: remolque === "-" ? null : remolque,
-    origen: (valorCampo(html, `${PFX}codMunicipioOrigenManifiesto`) ?? "").trim(),
-    destino: (valorCampo(html, `${PFX}codMunicipioDestinoManifiesto`) ?? "").trim(),
-    flete: numero(valorCampo(html, `${PFX}valorFletePactadoViaje`)),
-    retencionFuente: numero(
-      valorCampo(html, `${PFX}retencionFuenteManifiesto`),
-    ),
-    retencionFopat: numero(valorCampo(html, `${PFX}RETENCIONFOPAT`)),
+    placa: (valorInput(html, `${PFX}vehiculo_codigo`) ?? "").trim(),
+    remolque: remolque && remolque !== "-" ? remolque : null,
+    codigoCiudadOrigen:
+      (valorInput(html, `${PFX}ciudad_codigo_origen`) ?? "").trim(),
+    codigoCiudadDestino:
+      (valorInput(html, `${PFX}ciudad_codigo_destino`) ?? "").trim(),
+    flete: numero(valorInput(html, `${PFX}manifiesto_flete`)),
+    retencionFuente: numero(valorInput(html, `${PFX}manifiesto_impuesto`)),
     remesas,
   };
 }

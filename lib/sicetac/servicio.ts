@@ -4,6 +4,7 @@ import { conSilogtran, type Actor } from "@/lib/silogtran/sesion-servicio.ts";
 import { consultarMinisterio } from "./ministerio.ts";
 import { calcularSicetac } from "./portal.ts";
 import { leerRemesa, tipoCargaSicetac } from "./remesa.ts";
+import { leerCiudadSilogtran } from "./ciudad-silogtran.ts";
 import { leerManifiestoSilogtran } from "./manifiesto-silogtran.ts";
 import {
   accesoRndc,
@@ -187,17 +188,39 @@ export async function calcular(
   let original: string | null = ministerio.xml;
 
   if (opciones.soloInformativo && !ministerio.xml) {
-    let m;
+    // Lee el manifiesto de Silogtran y mapea los códigos internos de ciudad
+    // (los que trae la página) a sus DANE pidiendo cada ciudad por separado.
+    let m: ReturnType<typeof leerManifiestoSilogtran>;
+    let ciudadOrigen: ReturnType<typeof leerCiudadSilogtran>;
+    let ciudadDestino: ReturnType<typeof leerCiudadSilogtran>;
     try {
       m = leerManifiestoSilogtran(
         await conSilogtran(actor, (cli) => cli.paginaManifiesto(manifiesto)),
       );
+      if (!m.codigoCiudadOrigen || !m.codigoCiudadDestino)
+        throw new SilogtranError(
+          `El manifiesto ${manifiesto} no trae las ciudades de origen / destino.`,
+        );
+      [ciudadOrigen, ciudadDestino] = await Promise.all([
+        conSilogtran(actor, (cli) => cli.paginaCiudad(m.codigoCiudadOrigen)).then(
+          leerCiudadSilogtran,
+        ),
+        conSilogtran(actor, (cli) => cli.paginaCiudad(m.codigoCiudadDestino)).then(
+          leerCiudadSilogtran,
+        ),
+      ]);
     } catch (e) {
       if (e instanceof SilogtranError)
         return sinXml(vacio(manifiesto, "error", e.message), null);
       throw e;
     }
-    if (!m.placa || !m.origen || !m.destino || !m.remesas.length || !m.flete)
+    if (
+      !m.placa ||
+      !ciudadOrigen.dane ||
+      !ciudadDestino.dane ||
+      !m.remesas.length ||
+      !m.flete
+    )
       return sinXml(
         vacio(
           manifiesto,
@@ -205,8 +228,7 @@ export async function calcular(
           `No se pudieron leer todos los datos del manifiesto ${manifiesto} en Silogtran.`,
         ),
       );
-    // Acceso para el proceso 12 (configuración del vehículo): el del env o
-    // el que ya extrajimos de la página del Ministerio (acá no hay XML).
+    // Acceso para el proceso 12 (configuración del vehículo): el del env.
     const accesoRndcDisp = acceso ?? null;
     if (!accesoRndcDisp)
       return sinXml(
@@ -219,13 +241,13 @@ export async function calcular(
     d = {
       manifiesto,
       nit,
-      origen: m.origen,
-      destino: m.destino,
+      origen: ciudadOrigen.dane,
+      destino: ciudadDestino.dane,
       placa: m.placa,
       remolque: m.remolque,
       flete: m.flete,
       retencionFuente: m.retencionFuente,
-      retencionFopat: m.retencionFopat,
+      retencionFopat: 0, // el FOPAT no está en la vista del manifiesto
       remesas: m.remesas,
       acceso: accesoRndcDisp,
     };
