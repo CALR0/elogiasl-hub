@@ -19,15 +19,20 @@ import "server-only";
  * desactualizado. Los demás son fallbacks concretos. La variable
  * GEMINI_MODELO, si se define, va primero.
  */
+/*
+ * Van primero los que la experiencia muestra más rápidos y con mejor cupo.
+ * gemini-flash-latest es un alias que puede apuntar a un modelo pesado (3.x
+ * en vista previa) y tardar >45 s por respuesta, así que lo dejamos al final.
+ */
 const CASCADA_DEFECTO = [
-  "gemini-flash-latest",
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
-  "gemini-flash-latest-8b",
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
+  "gemini-flash-lite-latest",
+  "gemini-flash-latest",
   "gemini-pro-latest",
 ];
 
@@ -84,6 +89,9 @@ export function iaDisponible() {
 // las siguientes llamadas dentro de la misma lambda.
 let modeloRecordado: string | null = null;
 
+/** Tope por intento: debe caber 2-3 veces en el maxDuration del route (60 s). */
+const MS_POR_MODELO = 20_000;
+
 async function llamarModelo(
   modelo: string,
   key: string,
@@ -91,31 +99,52 @@ async function llamarModelo(
   contents: Contenido[],
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(key)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1024,
-      },
-      safetySettings: [
-        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_ONLY_HIGH",
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1024,
         },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_ONLY_HIGH",
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(45_000),
-  });
+        safetySettings: [
+          {
+            category: "HARM_CATEGORY_HARASSMENT",
+            threshold: "BLOCK_ONLY_HIGH",
+          },
+          {
+            category: "HARM_CATEGORY_HATE_SPEECH",
+            threshold: "BLOCK_ONLY_HIGH",
+          },
+          {
+            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold: "BLOCK_ONLY_HIGH",
+          },
+          {
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_ONLY_HIGH",
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(MS_POR_MODELO),
+    });
+  } catch (e) {
+    // Timeout o fallo de red: no sabemos si el modelo existe, lo tratamos
+    // como "saturado" para que la cascada pruebe el siguiente.
+    const esTimeout =
+      e instanceof Error &&
+      (e.name === "TimeoutError" || /abort/i.test(e.message));
+    throw new GeminiError(
+      esTimeout
+        ? `Gemini (${modelo}) tardó más de ${MS_POR_MODELO / 1000} s en responder.`
+        : `Gemini (${modelo}) no pudo contactarse. ${e instanceof Error ? e.message : ""}`.trim(),
+      true,
+    );
+  }
 
   if (!res.ok) {
     const cuerpo = await res.text().catch(() => "");
