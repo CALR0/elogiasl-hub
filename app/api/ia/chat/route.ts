@@ -150,9 +150,8 @@ export async function POST(req: Request) {
     : detectarManifiesto(ultimo);
 
   let contexto: string | null = null;
-  let analisis = null;
   if (numero && /^\d{5,20}$/.test(numero)) {
-    analisis = await analizarManifiesto(numero);
+    const analisis = await analizarManifiesto(numero);
     contexto = contextoParaIA(analisis);
   }
 
@@ -171,19 +170,7 @@ export async function POST(req: Request) {
       system: SYSTEM,
       historial: historialConContexto,
     });
-    return json({
-      respuesta,
-      modelo,
-      // El cliente usa esto para pintar una pastilla "Ya radicado" / "Con error"
-      analisis: analisis
-        ? {
-            manifiesto: analisis.manifiesto,
-            encontrado: analisis.encontrado,
-            radicado: analisis.radicado,
-            errorSicetac: analisis.errorSicetac,
-          }
-        : null,
-    });
+    return json({ respuesta, modelo });
   } catch (e) {
     const msg =
       e instanceof GeminiError

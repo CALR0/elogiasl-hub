@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  Bot,
-  CheckCircle2,
-  MessageCircle,
-  Search,
-  Send,
-  Sparkles,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { Bot, MessageCircle, Search, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { buttonClasses } from "@/components/ui/button";
@@ -31,12 +22,8 @@ type Rol = "usuario" | "ia";
 interface Mensaje {
   rol: Rol;
   texto: string;
-  analisis?: {
-    manifiesto: string;
-    encontrado: boolean;
-    radicado: boolean;
-    errorSicetac: boolean;
-  } | null;
+  /** Modelo que generó esta respuesta (solo para mensajes de la IA). */
+  modelo?: string | null;
 }
 
 const BIENVENIDA: Mensaje = {
@@ -89,7 +76,7 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
       }
       setMensajes([
         ...nuevos,
-        { rol: "ia", texto: datos.respuesta, analisis: datos.analisis ?? null },
+        { rol: "ia", texto: datos.respuesta, modelo: datos.modelo ?? null },
       ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo contactar al servidor.");
@@ -217,7 +204,7 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
 function Burbuja({ mensaje }: { mensaje: Mensaje }) {
   const esIA = mensaje.rol === "ia";
   return (
-    <li className={cx("flex", esIA ? "justify-start" : "justify-end")}>
+    <li className={cx("flex flex-col", esIA ? "items-start" : "items-end")}>
       <div
         className={cx(
           "max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
@@ -226,40 +213,13 @@ function Burbuja({ mensaje }: { mensaje: Mensaje }) {
             : "bg-primary text-primary-foreground",
         )}
       >
-        {mensaje.analisis && <Pastilla a={mensaje.analisis} />}
         {mensaje.texto}
       </div>
-    </li>
-  );
-}
-
-function Pastilla({
-  a,
-}: {
-  a: NonNullable<Mensaje["analisis"]>;
-}) {
-  const estilo = !a.encontrado
-    ? "border-muted-foreground/30 bg-muted/40 text-muted-foreground"
-    : a.radicado
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-      : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-  const Icono = !a.encontrado ? Search : a.radicado ? CheckCircle2 : TriangleAlert;
-  const texto = !a.encontrado
-    ? `Manifiesto ${a.manifiesto}: sin registro`
-    : a.radicado
-      ? `Manifiesto ${a.manifiesto}: radicado`
-      : a.errorSicetac
-        ? `Manifiesto ${a.manifiesto}: error de SICETAC (MAN045)`
-        : `Manifiesto ${a.manifiesto}: con error del Ministerio`;
-  return (
-    <div
-      className={cx(
-        "mb-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium",
-        estilo,
+      {esIA && mensaje.modelo && (
+        <span className="mt-0.5 px-1 text-[10px] text-muted-foreground">
+          {mensaje.modelo}
+        </span>
       )}
-    >
-      <Icono size={12} />
-      {texto}
-    </div>
+    </li>
   );
 }

@@ -80,11 +80,40 @@ function limpiarInformacion(crudo: string): string {
     .trim();
 }
 
+/**
+ * Decodifica una cadena URL-encoded cuyo contenido viene en bytes ISO-8859-1
+ * (lo que usa el RNDC: el XML declara encoding='ISO-8859-1'). No podemos usar
+ * decodeURIComponent porque espera UTF-8 y tira "URI malformed" con
+ * secuencias como %CD (que en latin1 es Í).
+ */
+function decodificarLatin1(encoded: string): string {
+  const s = encoded.replace(/\+/g, " ");
+  const bytes: number[] = [];
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === "%" && i + 2 < s.length) {
+      const h = s.slice(i + 1, i + 3);
+      if (/^[0-9A-Fa-f]{2}$/.test(h)) {
+        bytes.push(parseInt(h, 16));
+        i += 3;
+        continue;
+      }
+    }
+    bytes.push(s.charCodeAt(i) & 0xff);
+    i++;
+  }
+  return Buffer.from(bytes).toString("latin1");
+}
+
 function extraerXml(href: string | undefined): string | null {
   if (!href) return null;
   const i = href.indexOf("xml=");
   if (i < 0) return null;
-  return decodeURIComponent(href.slice(i + 4).replace(/\+/g, " "));
+  try {
+    return decodificarLatin1(href.slice(i + 4));
+  } catch {
+    return null;
+  }
 }
 
 /** Interpreta el HTML de consumoministerio.php (exportado para las pruebas). */
