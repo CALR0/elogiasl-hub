@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, MessageCircle, Search, Send, Sparkles, X } from "lucide-react";
+import { Bot, MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEstadoSesion } from "@/components/sesion/memoria-sesion";
 import { buttonClasses } from "@/components/ui/button";
@@ -144,10 +144,7 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
                 <Burbuja key={i} mensaje={m} />
               ))}
               {cargando && (
-                <li className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Search size={12} className="animate-pulse" />
-                  Consultando el ministerio y pensando…
-                </li>
+                <li className="text-xs text-muted-foreground">Pensando…</li>
               )}
               {error && (
                 <li className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -191,9 +188,6 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
                 <Send size={16} />
               </button>
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Enter envía · Shift+Enter nueva línea. Las respuestas pueden tener errores; verifica lo importante.
-            </p>
           </form>
         </div>
       )}
