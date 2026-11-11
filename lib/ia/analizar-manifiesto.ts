@@ -4,17 +4,26 @@ import {
   type EstadoMinisterio,
   type SeccionMinisterio,
 } from "@/lib/sicetac/ministerio";
+import { accesoRndc, consultarRadicado } from "@/lib/sicetac/rndc";
 
 /*
- * Herramienta del chat: dado un número de manifiesto, consulta el estado en
- * ministerio.colombiasoftware.net, extrae TODAS las secciones del acordeón
- * (clientes, tercero, remitente, destinatario, vehículo, remesa, manifiesto)
- * y arma un bloque de contexto para que la IA pueda correlacionar errores.
+ * Herramienta del chat: dado un número de manifiesto, averigua su estado real
+ * en el RNDC y en la página de consumoministerio.php, y arma un bloque de
+ * contexto para que la IA correlacione errores.
  *
- * Muchas veces un manifiesto "no sube" no porque falle el envío del
- * manifiesto en sí, sino porque una sección previa (típicamente Remesa)
- * tiene un error — p. ej. REM054 por carga de contenedor vacío. La IA
- * necesita ver esto para dar una respuesta útil.
+ * Fuentes:
+ *   1. Web service RNDC (proceso 4, tipo 3 → INGRESOID): la verdad sobre si
+ *      está RADICADO. La página del ministerio solo muestra intentos
+ *      recientes y puede estar en blanco aunque el manifiesto ya haya subido
+ *      hace tiempo, por lo que no basta con mirar el acordeón.
+ *   2. consumoministerio.php: las 7 secciones del acordeón (clientes,
+ *      tercero, remitente, destinatario, vehículo, remesa, manifiesto),
+ *      cada una con sus registros, mensajes y XML enviado. Sirve para ver
+ *      qué error devolvió el último intento cuando aún no está radicado,
+ *      o para ubicar un REMxxx aguas arriba.
+ *
+ * Ambas se consultan en paralelo. Si el RNDC dice que hay radicado, es
+ * la fuente de verdad: el chat debe decirlo aunque la página esté vacía.
  */
 
 /** Longitud máxima del XML que mandamos por entrada (los XML son enormes). */
@@ -22,8 +31,18 @@ const MAX_XML = 6_000;
 
 export interface AnalisisManifiesto {
   manifiesto: string;
+  /** La página tiene al menos un registro (en cualquier sección). */
   encontrado: boolean;
-  radicado: boolean;
+  /**
+   * El RNDC devolvió INGRESOID (proceso 4, tipo 3) → el manifiesto YA está
+   * radicado. Es la verdad definitiva: null si el RNDC no lo tiene, o si no
+   * se pudo consultar (sin credenciales, red caída…).
+   */
+  radicadoRndc: string | null;
+  /** Hubo un error al consultar el RNDC (lo contamos en el contexto). */
+  errorRndc: string | null;
+  /** Dice "REGISTRO INGRESADO" en la sección Manifiesto del acordeón. */
+  radicadoPagina: boolean;
   errorSicetac: boolean;
   /** Último mensaje de la sección "Envío de Manifiesto" (resumen compacto). */
   mensaje: string;
@@ -44,6 +63,25 @@ function recortarXml(xml: string | null) {
   return `${xml.slice(0, mitad)}\n\n/* … ${xml.length - MAX_XML} caracteres omitidos … */\n\n${xml.slice(-mitad)}`;
 }
 
+async function preguntarRadicado(num: string): Promise<{
+  radicado: string | null;
+  error: string | null;
+}> {
+  // El acceso al RNDC sale de las variables de entorno. Si no están, no
+  // podemos consultar el web service directo.
+  const { acceso, nit } = accesoRndc(null);
+  if (!acceso) return { radicado: null, error: null };
+  try {
+    const radicado = await consultarRadicado(acceso, nit, num);
+    return { radicado, error: null };
+  } catch (e) {
+    return {
+      radicado: null,
+      error: e instanceof Error ? e.message : "No se pudo consultar el RNDC.",
+    };
+  }
+}
+
 export async function analizarManifiesto(
   manifiesto: string,
 ): Promise<AnalisisManifiesto> {
@@ -52,41 +90,55 @@ export async function analizarManifiesto(
     return {
       manifiesto,
       encontrado: false,
-      radicado: false,
+      radicadoRndc: null,
+      errorRndc: null,
+      radicadoPagina: false,
       errorSicetac: false,
       mensaje: "No se reconoció un número de manifiesto válido.",
       secciones: [],
     };
 
-  let estado: EstadoMinisterio;
-  try {
-    estado = await consultarMinisterio(num);
-  } catch (e) {
+  // Las dos consultas en paralelo: una no bloquea la otra.
+  const [rndc, pagina] = await Promise.all([
+    preguntarRadicado(num),
+    consultarMinisterio(num).catch((e): EstadoMinisterio | Error =>
+      e instanceof Error ? e : new Error(String(e)),
+    ),
+  ]);
+
+  // Si la página falló y además el RNDC no dio radicado, respondemos con lo
+  // poco que tengamos y el mensaje del error.
+  if (pagina instanceof Error) {
     return {
       manifiesto: num,
       encontrado: false,
-      radicado: false,
+      radicadoRndc: rndc.radicado,
+      errorRndc: rndc.error,
+      radicadoPagina: false,
       errorSicetac: false,
-      mensaje:
-        e instanceof Error
-          ? `No se pudo consultar el ministerio: ${e.message}`
-          : "No se pudo consultar el ministerio.",
+      mensaje: rndc.radicado
+        ? `El RNDC lo tiene radicado bajo ${rndc.radicado}. La página del ministerio no respondió: ${pagina.message}`
+        : `No se pudo consultar el ministerio: ${pagina.message}`,
       secciones: [],
     };
   }
 
-  const encontrado = estado.secciones.some((s) => s.entradas.length > 0);
+  const encontrado = pagina.secciones.some((s) => s.entradas.length > 0);
+  const mensajeFallback = rndc.radicado
+    ? `El RNDC tiene este manifiesto radicado bajo ${rndc.radicado}. La página del ministerio está vacía (solo guarda intentos recientes).`
+    : encontrado
+      ? "La sección 'Envío de Manifiesto' está vacía: el manifiesto no se ha intentado enviar al RNDC. Revisa si una sección previa (Tercero, Vehículo, Remesa) está en error."
+      : "No se encontró envío de este manifiesto al Ministerio y el RNDC tampoco lo tiene radicado.";
+
   return {
     manifiesto: num,
     encontrado,
-    radicado: estado.registrado,
-    errorSicetac: estado.errorSicetac,
-    mensaje:
-      estado.mensaje ||
-      (encontrado
-        ? "La sección 'Envío de Manifiesto' está vacía: el manifiesto no se ha intentado enviar al RNDC. Revisa si una sección previa (Tercero, Vehículo, Remesa) está en error."
-        : "No se encontró envío de este manifiesto al Ministerio."),
-    secciones: estado.secciones,
+    radicadoRndc: rndc.radicado,
+    errorRndc: rndc.error,
+    radicadoPagina: pagina.registrado,
+    errorSicetac: pagina.errorSicetac,
+    mensaje: pagina.mensaje || mensajeFallback,
+    secciones: pagina.secciones,
   };
 }
 
@@ -98,11 +150,20 @@ function esExito(informacion: string) {
 /** Bloque legible que se adjunta al prompt de Gemini como contexto. */
 export function contextoParaIA(a: AnalisisManifiesto): string {
   const lineas: string[] = [
-    `Consulta a ministerio.colombiasoftware.net del manifiesto ${a.manifiesto}:`,
-    `- Encontrado en el ministerio: ${a.encontrado ? "sí" : "no"}`,
-    `- Sección 'Envío de Manifiesto' con radicado: ${a.radicado ? "sí" : "no"}`,
-    `- Error de SICETAC (MAN045, flete bajo): ${a.errorSicetac ? "sí" : "no"}`,
-    `- Mensaje del envío del manifiesto: ${a.mensaje}`,
+    `Datos del manifiesto ${a.manifiesto}:`,
+    "",
+    "1. CONSULTA AL WEB SERVICE DEL RNDC (fuente de verdad del Ministerio):",
+    a.radicadoRndc
+      ? `   - Manifiesto YA RADICADO en el RNDC bajo el número ${a.radicadoRndc}.`
+      : a.errorRndc
+        ? `   - No se pudo consultar el RNDC: ${a.errorRndc}`
+        : "   - El RNDC no tiene este manifiesto registrado (aún no se ha radicado).",
+    "",
+    "2. PÁGINA ministerio.colombiasoftware.net (acordeón con los últimos intentos):",
+    `   - Encontrado en la página: ${a.encontrado ? "sí" : "no"}`,
+    `   - Sección 'Envío de Manifiesto' marca REGISTRO INGRESADO: ${a.radicadoPagina ? "sí" : "no"}`,
+    `   - Error de SICETAC (MAN045, flete bajo): ${a.errorSicetac ? "sí" : "no"}`,
+    `   - Mensaje del envío del manifiesto: ${a.mensaje}`,
     "",
     "Secciones del acordeón (en orden de dependencia):",
   ];
