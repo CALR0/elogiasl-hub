@@ -1,26 +1,34 @@
 import "server-only";
-import { consultarMinisterio, type EstadoMinisterio } from "@/lib/sicetac/ministerio";
+import {
+  consultarMinisterio,
+  type EstadoMinisterio,
+  type SeccionMinisterio,
+} from "@/lib/sicetac/ministerio";
 
 /*
  * Herramienta del chat: dado un número de manifiesto, consulta el estado en
- * ministerio.colombiasoftware.net y arma un bloque de contexto que la IA
- * puede leer para explicar al usuario qué pasó.
+ * ministerio.colombiasoftware.net, extrae TODAS las secciones del acordeón
+ * (clientes, tercero, remitente, destinatario, vehículo, remesa, manifiesto)
+ * y arma un bloque de contexto para que la IA pueda correlacionar errores.
  *
- * - Si está REGISTRO INGRESADO: devuelve el mensaje con el radicado.
- * - Si tiene error: devuelve mensaje + un recorte del XML enviado (acotado
- *   para no gastar tokens) para que la IA pueda apuntar al dato equivocado.
+ * Muchas veces un manifiesto "no sube" no porque falle el envío del
+ * manifiesto en sí, sino porque una sección previa (típicamente Remesa)
+ * tiene un error — p. ej. REM054 por carga de contenedor vacío. La IA
+ * necesita ver esto para dar una respuesta útil.
  */
 
-/** Longitud máxima del XML que mandamos al prompt (los XML suelen ser enormes). */
-const MAX_XML = 8_000;
+/** Longitud máxima del XML que mandamos por entrada (los XML son enormes). */
+const MAX_XML = 6_000;
 
 export interface AnalisisManifiesto {
   manifiesto: string;
   encontrado: boolean;
   radicado: boolean;
   errorSicetac: boolean;
+  /** Último mensaje de la sección "Envío de Manifiesto" (resumen compacto). */
   mensaje: string;
-  xmlRecortado: string | null;
+  /** Las 7 secciones con todos los registros, para que la IA correlacione. */
+  secciones: SeccionMinisterio[];
 }
 
 /** Extrae el primer número de 5–20 dígitos del texto (número de manifiesto). */
@@ -32,7 +40,6 @@ export function detectarManifiesto(texto: string): string | null {
 function recortarXml(xml: string | null) {
   if (!xml) return null;
   if (xml.length <= MAX_XML) return xml;
-  // Deja el inicio (cabecera) y el final (remesas finales) con un corte visible
   const mitad = Math.floor(MAX_XML / 2) - 40;
   return `${xml.slice(0, mitad)}\n\n/* … ${xml.length - MAX_XML} caracteres omitidos … */\n\n${xml.slice(-mitad)}`;
 }
@@ -48,7 +55,7 @@ export async function analizarManifiesto(
       radicado: false,
       errorSicetac: false,
       mensaje: "No se reconoció un número de manifiesto válido.",
-      xmlRecortado: null,
+      secciones: [],
     };
 
   let estado: EstadoMinisterio;
@@ -64,11 +71,11 @@ export async function analizarManifiesto(
         e instanceof Error
           ? `No se pudo consultar el ministerio: ${e.message}`
           : "No se pudo consultar el ministerio.",
-      xmlRecortado: null,
+      secciones: [],
     };
   }
 
-  const encontrado = Boolean(estado.mensaje || estado.xml);
+  const encontrado = estado.secciones.some((s) => s.entradas.length > 0);
   return {
     manifiesto: num,
     encontrado,
@@ -77,29 +84,76 @@ export async function analizarManifiesto(
     mensaje:
       estado.mensaje ||
       (encontrado
-        ? "(el ministerio no devolvió texto del último envío)"
-        : "No se encontró envío de este manifiesto al ministerio."),
-    xmlRecortado: recortarXml(estado.xml),
+        ? "La sección 'Envío de Manifiesto' está vacía: el manifiesto no se ha intentado enviar al RNDC. Revisa si una sección previa (Tercero, Vehículo, Remesa) está en error."
+        : "No se encontró envío de este manifiesto al Ministerio."),
+    secciones: estado.secciones,
   };
+}
+
+/** ¿La entrada representa un registro ingresado con éxito? */
+function esExito(informacion: string) {
+  return /REGISTRO INGRESADO/i.test(informacion);
 }
 
 /** Bloque legible que se adjunta al prompt de Gemini como contexto. */
 export function contextoParaIA(a: AnalisisManifiesto): string {
-  const lineas = [
+  const lineas: string[] = [
     `Consulta a ministerio.colombiasoftware.net del manifiesto ${a.manifiesto}:`,
-    `- Encontrado: ${a.encontrado ? "sí" : "no"}`,
-    `- Ya radicado: ${a.radicado ? "sí" : "no"}`,
-    `- Error de SICETAC (MAN045, flete pactado por debajo del vigente): ${a.errorSicetac ? "sí" : "no"}`,
-    `- Último mensaje del ministerio: ${a.mensaje}`,
+    `- Encontrado en el ministerio: ${a.encontrado ? "sí" : "no"}`,
+    `- Sección 'Envío de Manifiesto' con radicado: ${a.radicado ? "sí" : "no"}`,
+    `- Error de SICETAC (MAN045, flete bajo): ${a.errorSicetac ? "sí" : "no"}`,
+    `- Mensaje del envío del manifiesto: ${a.mensaje}`,
+    "",
+    "Secciones del acordeón (en orden de dependencia):",
   ];
-  if (a.xmlRecortado) {
-    lineas.push(
-      "",
-      "XML del último envío (puede estar recortado):",
-      "```xml",
-      a.xmlRecortado,
-      "```",
-    );
+
+  // Recorremos todas las secciones aunque estén vacías: la IA debe saberlo
+  // para distinguir "no se intentó" de "se intentó y salió bien/mal".
+  for (const s of a.secciones) {
+    if (s.vacia) {
+      lineas.push(`\n• ${s.titulo}: sin registros.`);
+      continue;
+    }
+    const conError = s.entradas.filter((e) => e.codigosError.length > 0);
+    const resumen = conError.length
+      ? `${s.entradas.length} registro(s), ${conError.length} con error`
+      : `${s.entradas.length} registro(s), todos ingresados`;
+    lineas.push(`\n• ${s.titulo} — ${resumen}:`);
+    for (const e of s.entradas) {
+      const estado = esExito(e.informacion)
+        ? "OK"
+        : e.codigosError.length
+          ? `ERROR ${e.codigosError.join(", ")}`
+          : "SIN CONFIRMAR";
+      const doc = e.documento ? ` doc=${e.documento}` : "";
+      const cod = e.codigo ? ` cod=${e.codigo}` : "";
+      lineas.push(`  - [${estado}]${doc}${cod} ${e.informacion}`);
+    }
   }
+
+  // Solo adjuntamos los XML de las entradas CON ERROR (lo útil para analizar)
+  // y uno del manifiesto si está, para que la IA pueda apuntar al dato malo.
+  const xmlsRelevantes: { titulo: string; documento: string | null; xml: string }[] = [];
+  for (const s of a.secciones) {
+    for (const e of s.entradas) {
+      if (!e.xml) continue;
+      const enError = e.codigosError.length > 0 && !esExito(e.informacion);
+      if (enError)
+        xmlsRelevantes.push({ titulo: s.titulo, documento: e.documento, xml: e.xml });
+    }
+  }
+  if (xmlsRelevantes.length) {
+    lineas.push("", "XML del/los envíos con error (recortados):");
+    for (const x of xmlsRelevantes.slice(0, 3)) {
+      lineas.push(
+        "",
+        `--- ${x.titulo}${x.documento ? ` (${x.documento})` : ""} ---`,
+        "```xml",
+        recortarXml(x.xml) ?? "",
+        "```",
+      );
+    }
+  }
+
   return lineas.join("\n");
 }
