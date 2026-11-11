@@ -10,6 +10,11 @@ import {
   detectarManifiesto,
 } from "@/lib/ia/analizar-manifiesto.ts";
 import {
+  analizarSicetac,
+  contextoSicetacParaIA,
+  pideSicetac,
+} from "@/lib/ia/analizar-sicetac.ts";
+import {
   GeminiError,
   type MensajeChat,
   iaDisponible,
@@ -150,6 +155,30 @@ responde por el bloque del MANIFIESTO y, cuando sea útil, menciona en
 una línea el estado del cumplido (ej. "El manifiesto ya está radicado,
 pero su cumplido aún no").
 
+CÁLCULO DEL SICETAC
+Cuando el usuario pregunta por el SICETAC, el flete mínimo o el flete
+vigente de un manifiesto, el sistema añade un bloque EXTRA de
+"Cálculo del SICETAC del manifiesto …". Si está presente:
+
+- Dile al usuario los tres números clave redondeados sin decimales:
+  flete pactado actual, SICETAC vigente y la diferencia (si el flete
+  está por debajo, señala CUÁNTO falta y recomienda el módulo
+  "Expedir manifiesto SICETAC" para ajustarlo y reexpedir).
+- Cuenta de forma breve los datos usados (ruta, configuración del
+  vehículo, tipo de carga, horas de cargue y descargue): son útiles
+  para que el usuario verifique si el cálculo tomó bien los datos.
+- Si el bloque trae "Retenciones que quedarían con el flete ajustado",
+  muéstraselas (retención en la fuente 1 % y FOPAT 0,1 %).
+- Si el estado del cálculo es "cumple", explica que el flete pactado
+  ya cumple el SICETAC y que no hace falta reexpedir.
+- Si el estado es "registrado", el manifiesto ya tiene radicado en el
+  RNDC: no se recalcula ni se reenvía.
+- Si el estado es "error", repite el mensaje recibido tal cual y pide
+  al usuario que lo intente de nuevo o revise el módulo.
+- Si el bloque NO está presente y el usuario pregunta por SICETAC,
+  invítale a formular la pregunta con la palabra "sicetac" o "flete"
+  para que el sistema corra el cálculo.
+
 Reglas:
 - Responde SIEMPRE en español.
 - El contexto es tu ÚNICA fuente de verdad para ese manifiesto. No inventes
@@ -245,15 +274,23 @@ export async function POST(req: Request) {
 
   let contexto: string | null = null;
   if (numero && /^\d{5,20}$/.test(numero)) {
-    // Siempre analizamos ambas cosas: manifiesto y cumplido. Elia decide con
-    // el contexto cuál le interesa al usuario; si pregunta solo por uno,
-    // menciona lo del otro de pasada cuando aporte (p. ej. "el manifiesto
-    // ya está radicado, pero el cumplido aún no").
-    const [aManifiesto, aCumplido] = await Promise.all([
+    // Siempre: manifiesto y cumplido (rápidos, páginas + 2 llamadas al RNDC).
+    // Solo cuando el usuario pregunta por "sicetac" / "flete": también el
+    // cálculo del SICETAC (tarda ~5-10 s porque pasa por Silogtran, RNDC y
+    // el portal del ministerio).
+    const quiereSicetac = pideSicetac(ultimo);
+    const actor = { id: usuario.id, email: usuario.email };
+    const [aManifiesto, aCumplido, aSicetac] = await Promise.all([
       analizarManifiesto(numero),
       analizarCumplido(numero),
+      quiereSicetac ? analizarSicetac(actor, numero) : Promise.resolve(null),
     ]);
-    contexto = `${contextoParaIA(aManifiesto)}\n\n---\n\n${contextoCumplidoParaIA(aCumplido)}`;
+    const partes = [
+      contextoParaIA(aManifiesto),
+      contextoCumplidoParaIA(aCumplido),
+    ];
+    if (aSicetac) partes.push(contextoSicetacParaIA(aSicetac));
+    contexto = partes.join("\n\n---\n\n");
   }
 
   const historialConContexto: MensajeChat[] = contexto

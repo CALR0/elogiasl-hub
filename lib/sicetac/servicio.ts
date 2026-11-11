@@ -109,7 +109,18 @@ const sinXml = (
   xmlCorregido: null,
 });
 
-async function calcular(actor: Actor, manifiesto: string): Promise<Calculo> {
+export type { Calculo };
+
+/**
+ * Hace el cálculo completo del SICETAC para un manifiesto SIN enviar nada al
+ * RNDC: consulta el ministerio, lee la remesa en Silogtran, pregunta la
+ * configuración del vehículo al RNDC y pasa por el portal SICETAC. Devuelve
+ * el ResultadoCalculo (flete, SICETAC, nuevo con retenciones, detalle de
+ * ruta/vehículo/carga/horas) y los XML para que la capa superior decida qué
+ * hacer con ellos. Lo usa `procesar()` para expedir, y lo usa el chat IA
+ * (lib/ia/analizar-sicetac.ts) para solo responder al usuario.
+ */
+export async function calcular(actor: Actor, manifiesto: string): Promise<Calculo> {
   const ministerio = await consultarMinisterio(manifiesto);
 
   // Antes de nada: si el RNDC ya tiene radicado para este manifiesto, no se toca
