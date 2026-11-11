@@ -10,14 +10,28 @@ import "server-only";
  * a internet.
  */
 
-export const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-3.8-flash";
+export const GEMINI_MODELO = process.env.GEMINI_MODELO || "gemini-2.5-flash";
+
+/**
+ * Modelo de respaldo si el principal está saturado (503). Más liviano y con
+ * más cupo en el free tier. Se puede desactivar con GEMINI_MODELO_RESPALDO="".
+ */
+export const GEMINI_MODELO_RESPALDO =
+  process.env.GEMINI_MODELO_RESPALDO ?? "gemini-2.5-flash-lite";
 
 export interface MensajeChat {
   rol: "usuario" | "ia";
   texto: string;
 }
 
-export class GeminiError extends Error {}
+export class GeminiError extends Error {
+  constructor(
+    mensaje: string,
+    public saturado = false,
+  ) {
+    super(mensaje);
+  }
+}
 
 interface Parte {
   text: string;
@@ -39,30 +53,13 @@ export function iaDisponible() {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-/**
- * Envía la conversación a Gemini y devuelve el texto de la respuesta. El
- * `system` guía el estilo; el `historial` es la conversación completa (la
- * última entrada del historial es el mensaje del usuario a responder).
- */
-export async function pedirRespuesta({
-  system,
-  historial,
-}: {
-  system: string;
-  historial: MensajeChat[];
-}): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key)
-    throw new GeminiError(
-      "La IA no está configurada (falta GEMINI_API_KEY en el servidor).",
-    );
-
-  const contents: Contenido[] = historial.map((m) => ({
-    role: m.rol === "usuario" ? "user" : "model",
-    parts: [{ text: m.texto }],
-  }));
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODELO)}:generateContent?key=${encodeURIComponent(key)}`;
+async function llamarModelo(
+  modelo: string,
+  key: string,
+  system: string,
+  contents: Contenido[],
+): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -91,8 +88,12 @@ export async function pedirRespuesta({
 
   if (!res.ok) {
     const cuerpo = await res.text().catch(() => "");
+    // 429 = cuota diaria/por minuto llena. 503 = modelo saturado. Ambos son
+    // "intenta más tarde" o "prueba otro modelo".
+    const saturado = res.status === 503 || res.status === 429;
     throw new GeminiError(
-      `Gemini respondió HTTP ${res.status}. ${cuerpo.slice(0, 300)}`.trim(),
+      `Gemini (${modelo}) respondió HTTP ${res.status}. ${cuerpo.slice(0, 300)}`.trim(),
+      saturado,
     );
   }
   const datos = (await res.json()) as Respuesta;
@@ -107,4 +108,62 @@ export async function pedirRespuesta({
     .trim();
   if (!texto) throw new GeminiError("La IA no devolvió respuesta.");
   return texto;
+}
+
+/**
+ * Envía la conversación a Gemini y devuelve el texto de la respuesta.
+ * - `system` guía el estilo.
+ * - `historial` es la conversación completa (la última entrada es el mensaje
+ *   del usuario a responder).
+ *
+ * Si el modelo principal está saturado (503 / 429), reintenta con el modelo
+ * de respaldo definido en GEMINI_MODELO_RESPALDO (por defecto el "-lite").
+ */
+export async function pedirRespuesta({
+  system,
+  historial,
+}: {
+  system: string;
+  historial: MensajeChat[];
+}): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key)
+    throw new GeminiError(
+      "La IA no está configurada (falta GEMINI_API_KEY en el servidor).",
+    );
+
+  const contents: Contenido[] = historial.map((m) => ({
+    role: m.rol === "usuario" ? "user" : "model",
+    parts: [{ text: m.texto }],
+  }));
+
+  try {
+    return await llamarModelo(GEMINI_MODELO, key, system, contents);
+  } catch (e) {
+    if (
+      !(e instanceof GeminiError) ||
+      !e.saturado ||
+      !GEMINI_MODELO_RESPALDO ||
+      GEMINI_MODELO_RESPALDO === GEMINI_MODELO
+    )
+      throw e;
+    console.warn(
+      `[ia] ${GEMINI_MODELO} saturado, probando con ${GEMINI_MODELO_RESPALDO}`,
+    );
+    try {
+      return await llamarModelo(
+        GEMINI_MODELO_RESPALDO,
+        key,
+        system,
+        contents,
+      );
+    } catch (e2) {
+      if (e2 instanceof GeminiError && e2.saturado)
+        throw new GeminiError(
+          "La IA está saturada en este momento. Vuelve a intentarlo en unos segundos.",
+          true,
+        );
+      throw e2;
+    }
+  }
 }
