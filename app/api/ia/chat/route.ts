@@ -169,10 +169,16 @@ vigente de un manifiesto, el sistema añade un bloque EXTRA de
   para que el usuario verifique si el cálculo tomó bien los datos.
 - Si el bloque trae "Retenciones que quedarían con el flete ajustado",
   muéstraselas (retención en la fuente 1 % y FOPAT 0,1 %).
-- Si el estado del cálculo es "cumple", explica que el flete pactado
-  ya cumple el SICETAC y que no hace falta reexpedir.
-- Si el estado es "registrado", el manifiesto ya tiene radicado en el
-  RNDC: no se recalcula ni se reenvía.
+- El cálculo del SICETAC en el chat es INFORMATIVO: se muestra siempre
+  el número aunque el manifiesto ya esté radicado o el último envío
+  haya salido OK. No conviertas "ya tiene radicado" en motivo para no
+  mostrar el SICETAC: siempre entrega flete pactado, SICETAC vigente
+  y diferencia.
+- Si el estado es "listo" (flete por debajo), señala la diferencia y
+  recomienda usar el módulo "Expedir manifiesto SICETAC" para ajustar
+  el flete y reexpedir.
+- Si el estado es "cumple", di que el flete pactado ya cumple el
+  SICETAC — aún así, da los dos números.
 - Si el estado es "error", repite el mensaje recibido tal cual y pide
   al usuario que lo intente de nuevo o revise el módulo.
 - Si el bloque NO está presente y el usuario pregunta por SICETAC,

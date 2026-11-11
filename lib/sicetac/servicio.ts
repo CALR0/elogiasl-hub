@@ -120,13 +120,25 @@ export type { Calculo };
  * hacer con ellos. Lo usa `procesar()` para expedir, y lo usa el chat IA
  * (lib/ia/analizar-sicetac.ts) para solo responder al usuario.
  */
-export async function calcular(actor: Actor, manifiesto: string): Promise<Calculo> {
+export async function calcular(
+  actor: Actor,
+  manifiesto: string,
+  opciones: {
+    /**
+     * Modo informativo (chat IA): se saltan los atajos de "ya radicado" y
+     * "el último envío no es MAN045", porque el usuario pregunta por el
+     * valor del SICETAC y le sirve conocerlo igual. Nunca devuelve
+     * "registrado" en este modo.
+     */
+    soloInformativo?: boolean;
+  } = {},
+): Promise<Calculo> {
   const ministerio = await consultarMinisterio(manifiesto);
 
   // Antes de nada: si el RNDC ya tiene radicado para este manifiesto, no se toca
   // (cubre los que se expidieron antes y evita radicar dos veces)
   const { acceso, nit } = accesoRndc(ministerio.xml);
-  if (acceso) {
+  if (!opciones.soloInformativo && acceso) {
     let radicado: string | null;
     try {
       radicado = await consultarRadicado(acceso, nit, manifiesto);
@@ -151,7 +163,7 @@ export async function calcular(actor: Actor, manifiesto: string): Promise<Calcul
       );
   }
 
-  if (ministerio.registrado)
+  if (!opciones.soloInformativo && ministerio.registrado)
     return sinXml(
       vacio(
         manifiesto,
@@ -171,7 +183,7 @@ export async function calcular(actor: Actor, manifiesto: string): Promise<Calcul
       ),
     );
   const original = ministerio.xml;
-  if (!ministerio.errorSicetac)
+  if (!opciones.soloInformativo && !ministerio.errorSicetac)
     return sinXml(
       vacio(
         manifiesto,

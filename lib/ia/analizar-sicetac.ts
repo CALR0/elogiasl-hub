@@ -44,7 +44,9 @@ export async function analizarSicetac(
     };
 
   try {
-    const { resultado } = await calcular(actor, num);
+    // soloInformativo: calcular aunque el manifiesto ya esté radicado o el
+    // último envío no sea MAN045 — al usuario le sirve el número.
+    const { resultado } = await calcular(actor, num, { soloInformativo: true });
     const diferencia =
       resultado.flete !== null && resultado.sicetac !== null
         ? resultado.sicetac - resultado.flete
