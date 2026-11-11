@@ -111,10 +111,11 @@ Los módulos "en construcción" ya tienen su lugar en el menú y en los permisos
 - **TusDatos** (`dash-board.tusdatos.co`) — Basic Auth; `/api/launch` (personas) y
   `/api/launch/car` (vehículos), `GET /api/results/{jobid}` para pollear, `GET /api/report_json/{id}`
   para los hallazgos. Sin credenciales se activa el simulador determinista.
-- **Control T** (`app.controlt.com.co`) — API v1 con Bearer OAuth2
-  (`POST /v1/Security/Login` form-urlencoded + `GET /v1/hub/last/{placa}` para la ubicación) y API
-  Public (`/apipublic/api/Resume` y `/apipublic/api/Travel/search`) para los viajes activos y
-  programados, todo con el mismo token. Token en memoria del runtime (~24 h).
+- **Control T** (`app.controlt.com.co`) — DOS APIs con DOS tokens Bearer distintos (mismas
+  credenciales): el API Public (`POST /apipublic/api/login/oauth` JSON) para `/api/Resume` y
+  `/api/Travel/search` (viajes activos y programados), y el API Hub
+  (`POST /v1/Security/Login` form-urlencoded) para `GET /v1/hub/last/{placa}` (ubicación en tiempo
+  real). Los dos tokens en memoria del runtime, cada uno con su vencimiento (~12 h y ~24 h).
 - **Gemini** (`generativelanguage.googleapis.com`) — Elia usa una cascada de modelos
   (`gemini-2.5-flash` → `-lite` → `2.0-flash` → `1.5-flash` → `pro-latest`) y se queda con el primero
   que la API key acepte. Diagnóstico en `/api/ia/diagnostico` (requiere sesión) para ver qué modelos

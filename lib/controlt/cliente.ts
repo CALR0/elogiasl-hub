@@ -4,42 +4,53 @@ import type { ResultadoConsulta, Vehiculo, ViajeResumen } from "./tipos";
 /*
  * Cliente HTTP del servicio Control T (monitoreo de flotas en Colombia).
  *
- * Un solo token Bearer sirve para TODOS los endpoints:
- *   • API v1       (/v1/Security/Login, /v1/hub/last/{placa}) — login OAuth
- *                  por x-www-form-urlencoded y ubicación por placa.
- *   • API Public   (/apipublic/api/Resume, /apipublic/api/Travel/search) —
- *                  viajes activos y programados.
+ * DOS tokens Bearer distintos (mismas credenciales, dos endpoints de login):
+ *   • API Public   (/apipublic/*)                 — token "publico".
+ *       Login: POST /apipublic/api/login/oauth con body JSON
+ *              {username, password}.
+ *       Uso:   GET /apipublic/api/Resume          (viajes activos)
+ *              GET /apipublic/api/Travel/search   (viajes programados)
+ *   • API Hub      (/v1/hub/*)                    — token "hub".
+ *       Login: POST /v1/Security/Login con body x-www-form-urlencoded
+ *              (username, password, grant_type=password).
+ *       Uso:   GET /v1/hub/last/{placa}           (última posición).
  *
- * Antes se usaba /apipublic/api/login/oauth (JSON) y /APP/ApiWeb/CurrentLocation
- * (multipart). Migrado a /v1/Security/Login + /v1/hub/last/{placa} (Bearer,
- * JSON), que es la API actual de Control T.
+ * El token del API Public NO sirve para el API Hub ni viceversa, por eso
+ * sesion-servicio.ts guarda y renueva los dos por separado.
  *
  * En el portal no hay proxy ni navegador: todas las llamadas salen del
- * servidor, el token vive en memoria del runtime (sesion-servicio.ts) y el
- * cliente nunca lo ve.
+ * servidor, los tokens viven en memoria del runtime y el cliente nunca los
+ * ve.
  */
 
 export const BASE_URL =
   process.env.CONTROLT_BASE_URL || "https://app.controlt.com.co";
 
-const LOGIN_PATH = "/v1/Security/Login";
+const LOGIN_PUBLIC_PATH = "/apipublic/api/login/oauth";
+const LOGIN_HUB_PATH = "/v1/Security/Login";
 const RESUME_PATH = "/apipublic/api/Resume";
 const HUB_LAST_PATH = "/v1/hub/last";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
 
+export type ApiToken = "publico" | "hub";
+
 export class ControlTError extends Error {
-  /** El token no sirve: hay que pedir uno nuevo y reintentar. */
-  tokenInvalido: boolean;
+  /**
+   * Si está definido, el token de esa API no sirve y hay que renovarlo.
+   * Antes era boolean; ahora identifica cuál de los dos (publico | hub)
+   * debe renovarse para no pedir los dos innecesariamente.
+   */
+  tokenInvalido: ApiToken | null;
   /** Error de credenciales/cuenta: no reintentar seguido. */
   deCuenta: boolean;
   constructor(
     mensaje: string,
-    opciones: { tokenInvalido?: boolean; deCuenta?: boolean } = {},
+    opciones: { tokenInvalido?: ApiToken | null; deCuenta?: boolean } = {},
   ) {
     super(mensaje);
-    this.tokenInvalido = opciones.tokenInvalido ?? false;
+    this.tokenInvalido = opciones.tokenInvalido ?? null;
     this.deCuenta = opciones.deCuenta ?? false;
   }
 }
@@ -51,38 +62,14 @@ export interface LoginRespuesta {
 }
 
 /**
- * Obtiene un token Bearer con el flujo OAuth2 "password" de Control T:
- * POST /v1/Security/Login con body x-www-form-urlencoded
- * (username, password, grant_type=password). La respuesta trae access_token
- * y expires_in en segundos (observado ~86400, es decir 24 h).
+ * Procesa la respuesta común de los dos logins (misma forma JSON:
+ * { access_token, expires_in, ... }). `defaultSegundos` fija un fallback por
+ * si el servidor no manda expires_in.
  */
-export async function iniciarSesion(
-  usuario: string,
-  clave: string,
+async function procesarLogin(
+  res: Response,
+  defaultSegundos: number,
 ): Promise<LoginRespuesta> {
-  const body = new URLSearchParams();
-  body.set("username", usuario);
-  body.set("password", clave);
-  body.set("grant_type", "password");
-
-  let res: Response;
-  try {
-    res = await fetch(`${BASE_URL}${LOGIN_PATH}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        accept: "application/json",
-        "user-agent": UA,
-      },
-      body: body.toString(),
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (e) {
-    throw new ControlTError(
-      `No se pudo contactar a Control T: ${(e as Error).message}`,
-    );
-  }
-
   if (res.status === 400 || res.status === 401 || res.status === 403) {
     throw new ControlTError(
       "Usuario o contraseña de la cuenta de servicio Control T incorrectos.",
@@ -104,10 +91,72 @@ export async function iniciarSesion(
   if (!token) {
     throw new ControlTError("Control T no devolvió un token de acceso.");
   }
-
-  // expires_in llega en segundos. Margen de 60 s por si el reloj se desfasa.
-  const segundos = Math.max(60, Number(datos.expires_in) || 86_400);
+  // Margen de 60 s por si el reloj se desfasa.
+  const segundos = Math.max(60, Number(datos.expires_in) || defaultSegundos);
   return { token, venceEnMs: Date.now() + segundos * 1000 };
+}
+
+/**
+ * Token para la API PUBLIC (Resume, Travel/search). Login antiguo:
+ * POST /apipublic/api/login/oauth con body JSON {username, password}.
+ * expires_in observado ~43200 s (12 h).
+ */
+export async function iniciarSesionPublic(
+  usuario: string,
+  clave: string,
+): Promise<LoginRespuesta> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${LOGIN_PUBLIC_PATH}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "user-agent": UA,
+      },
+      body: JSON.stringify({ username: usuario, password: clave }),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    throw new ControlTError(
+      `No se pudo contactar a Control T: ${(e as Error).message}`,
+    );
+  }
+  return procesarLogin(res, 43_200);
+}
+
+/**
+ * Token para la API HUB (/v1/hub/last/{placa}). Login OAuth2 "password":
+ * POST /v1/Security/Login con body x-www-form-urlencoded
+ * (username, password, grant_type=password). expires_in ~86400 s (24 h).
+ */
+export async function iniciarSesionHub(
+  usuario: string,
+  clave: string,
+): Promise<LoginRespuesta> {
+  const body = new URLSearchParams();
+  body.set("username", usuario);
+  body.set("password", clave);
+  body.set("grant_type", "password");
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${LOGIN_HUB_PATH}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "application/json",
+        "user-agent": UA,
+      },
+      body: body.toString(),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    throw new ControlTError(
+      `No se pudo contactar a Control T: ${(e as Error).message}`,
+    );
+  }
+  return procesarLogin(res, 86_400);
 }
 
 async function pedirResume(
@@ -134,8 +183,8 @@ async function pedirResume(
   }
 
   if (res.status === 401) {
-    throw new ControlTError("El token de Control T fue rechazado.", {
-      tokenInvalido: true,
+    throw new ControlTError("Token del API Public rechazado por Control T.", {
+      tokenInvalido: "publico",
     });
   }
   // Control T responde 500 cuando no encuentra nada: se trata como lista vacía.
@@ -179,8 +228,8 @@ async function pedirTravelSearch(
     );
   }
   if (res.status === 401) {
-    throw new ControlTError("El token de Control T fue rechazado.", {
-      tokenInvalido: true,
+    throw new ControlTError("Token del API Public rechazado por Control T.", {
+      tokenInvalido: "publico",
     });
   }
   // 500 o 404: sin resultados → lista vacía
@@ -223,8 +272,8 @@ async function pedirUbicacionHub(
     );
   }
   if (res.status === 401) {
-    throw new ControlTError("El token de Control T fue rechazado.", {
-      tokenInvalido: true,
+    throw new ControlTError("Token del API Hub rechazado por Control T.", {
+      tokenInvalido: "hub",
     });
   }
   if (res.status === 404) return null;
@@ -386,6 +435,14 @@ function normalizarViaje(raw: Record<string, unknown>): ViajeResumen {
 
 // ─── Operaciones de alto nivel ──────────────────────────────────────────────
 
+/** Los dos tokens que necesita el cliente (ver el comentario de cabecera). */
+export interface Tokens {
+  /** Login JSON antiguo /apipublic/api/login/oauth — Resume y Travel/search. */
+  publico: string;
+  /** Login nuevo /v1/Security/Login — /v1/hub/last/{placa}. */
+  hub: string;
+}
+
 /** Normaliza las placas: mayúsculas, sin espacios ni guiones, separadas por coma. */
 export function normalizarPlacas(valor: string): string[] {
   return Array.from(
@@ -399,11 +456,11 @@ export function normalizarPlacas(valor: string): string[] {
 }
 
 export async function consultarPlaca(
-  token: string,
+  tokens: Tokens,
   placas: string[],
 ): Promise<ResultadoConsulta> {
   if (!placas.length) return { vehiculos: [], viajes: [] };
-  const crudos = await pedirCurrentLocation(token, placas);
+  const crudos = await pedirCurrentLocation(tokens.hub, placas);
   const vehiculos = crudos
     .map((r) => normalizarVehiculo(r))
     .filter((v): v is Vehiculo => v !== null);
@@ -413,7 +470,7 @@ export async function consultarPlaca(
   const viajes: ViajeResumen[] = [];
   for (const placa of placas.slice(0, 5)) {
     try {
-      const resumen = await pedirResume(token, placa);
+      const resumen = await pedirResume(tokens.publico, placa);
       const dePlaca = resumen
         .map((r) => normalizarViaje(r))
         .filter((v) => v.placa && v.placa.toUpperCase() === placa);
@@ -422,7 +479,7 @@ export async function consultarPlaca(
         continue;
       }
       // Fallback: viajes programados que no aparecen en Resume
-      const programados = await pedirTravelSearch(token, placa);
+      const programados = await pedirTravelSearch(tokens.publico, placa);
       for (const r of programados) {
         const v = normalizarTravel(r);
         if (v.placa && v.placa.toUpperCase() === placa) viajes.push(v);
@@ -443,10 +500,10 @@ export async function consultarPlaca(
 }
 
 export async function consultarManifiesto(
-  token: string,
+  tokens: Tokens,
   numero: string,
 ): Promise<ResultadoConsulta> {
-  const crudos = await pedirResume(token, numero.trim());
+  const crudos = await pedirResume(tokens.publico, numero.trim());
   const viajes = crudos.map((r) => normalizarViaje(r));
   if (!viajes.length) {
     return {
@@ -455,22 +512,24 @@ export async function consultarManifiesto(
       aviso: "Sin viaje encontrado para ese manifiesto u orden.",
     };
   }
-  // Ubicaciones actuales de las placas asociadas (una llamada agrupada)
+  // Ubicaciones actuales de las placas asociadas
   const placas = Array.from(
     new Set(viajes.map((v) => v.placa).filter((p): p is string => !!p)),
   );
   let vehiculos: Vehiculo[] = [];
   if (placas.length) {
     try {
-      const crudosV = await pedirCurrentLocation(token, placas);
+      const crudosV = await pedirCurrentLocation(tokens.hub, placas);
       vehiculos = crudosV
         .map((r) => normalizarVehiculo(r))
         .filter((v): v is Vehiculo => v !== null);
-    } catch {
-      // Si CurrentLocation falla se igual muestra el viaje con lat/lng del Resume
+    } catch (e) {
+      // Token hub inválido: propagar para que la capa superior lo renueve.
+      if (e instanceof ControlTError && e.tokenInvalido) throw e;
+      // Otros fallos: se muestra el viaje con lat/lng del Resume.
     }
   }
-  // Si no hubo CurrentLocation, usa la posición del viaje como vehículo.
+  // Si no hubo ubicación, usa la posición del viaje como vehículo.
   if (!vehiculos.length) {
     vehiculos = viajes
       .filter(

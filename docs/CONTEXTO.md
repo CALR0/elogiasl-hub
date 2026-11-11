@@ -230,22 +230,27 @@ confirmación en pantalla) por cada manifiesto, en un paso:
 ## 5.4 Monitoreo vehículo (Despacho › Tráfico) · migrado de TVIEWER
 
 - Consulta la ubicación y el viaje activo en **Control T** por **placa** (una o varias) o por
-  **manifiesto / orden**. Dos APIs con el mismo Bearer:
-    - **API v1** — `POST /v1/Security/Login` (OAuth2 `password`, body
-      `x-www-form-urlencoded`: `username`, `password`, `grant_type=password`) y
-      `GET /v1/hub/last/{placa}` (Bearer) para la última posición reportada.
-    - **API Public** — `/apipublic/api/Resume` para los viajes activos y
-      `/apipublic/api/Travel/search` para los programados. El token de la API v1 sirve igual aquí.
+  **manifiesto / orden**. DOS APIs con DOS tokens Bearer distintos (mismas credenciales, dos
+  logins separados):
+    - **API Public** (`/apipublic/*`) — token "publico".
+      `POST /apipublic/api/login/oauth` con body JSON `{username, password}` → viajes activos
+      (`GET /apipublic/api/Resume`) y programados (`GET /apipublic/api/Travel/search`).
+    - **API Hub** (`/v1/hub/*`) — token "hub".
+      `POST /v1/Security/Login` con body `x-www-form-urlencoded`
+      (`username`, `password`, `grant_type=password`) → última posición reportada
+      (`GET /v1/hub/last/{placa}`). El token del Hub NO sirve en el Public, ni viceversa.
 - `lib/controlt/cliente.ts` — login + normalización de `hub/last`, `Resume` y `Travel/search`.
   Cada placa consulta `/v1/hub/last/{placa}` en paralelo (Promise.all); 404 o `Result = null` =
-  sin reporte para esa placa; 401 marca token inválido. En `Resume`: 500/404 = sin resultados (no
-  error). **Fallback automático**: si Resume no devuelve nada para una placa, intenta
-  `Travel/search` para traer los viajes **programados** (estado `"Programado"`, sin posición, con
-  la fecha de salida anotada en observaciones). Portado de `tviewer/controlt-mapa` y migrado al
-  nuevo endpoint `/v1/hub/last` (antes `/APP/ApiWeb/CurrentLocation` por multipart).
-- `lib/controlt/sesion-servicio.ts` — cuenta de servicio `CONTROLT_USUARIO` / `CONTROLT_CLAVE`. El
-  token Bearer vive en memoria del runtime y se reusa hasta vencer (~24 h, `expires_in` segundos);
-  un 401 fuerza relogin y reintenta una vez. El cliente nunca ve el token.
+  sin reporte para esa placa; 401 marca el token correspondiente como inválido
+  (`tokenInvalido: "publico" | "hub"`). En `Resume`: 500/404 = sin resultados (no error).
+  **Fallback automático**: si Resume no devuelve nada para una placa, intenta `Travel/search` para
+  traer los viajes **programados** (estado `"Programado"`, sin posición, con la fecha de salida
+  anotada en observaciones). Portado de `tviewer/controlt-mapa` y migrado al nuevo endpoint
+  `/v1/hub/last` (antes `/APP/ApiWeb/CurrentLocation` por multipart).
+- `lib/controlt/sesion-servicio.ts` — cuenta de servicio `CONTROLT_USUARIO` / `CONTROLT_CLAVE`.
+  Mantiene dos cachés y dos candados independientes (uno por API) en memoria del runtime y
+  reutiliza cada token hasta vencer (publico ~12 h, hub ~24 h). Un 401 solo renueva EL token
+  afectado y reintenta la operación una vez. El cliente nunca ve los tokens.
 - Página `app/(plataforma)/despacho/trafico/monitoreo-vehiculo`: server action `consultar()`
   autoriza con `requirePermiso` y audita (`trafico.consultar`); mapa Leaflet cargado por CDN en
   `mapa.tsx` (sin dependencia npm) y panel de resumen por vehículo con viaje asociado.
