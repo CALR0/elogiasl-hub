@@ -30,7 +30,7 @@ interface Mensaje {
 const BIENVENIDA: Mensaje = {
   rol: "ia",
   texto:
-    "Hola, soy tu IA asistente. Puedo consultar un manifiesto y explicarte si ya está radicado o por qué el Ministerio lo rechazó. Pégame el número para empezar, o pregúntame lo que necesites.",
+    "Hola, soy Elia, la IA asistente de Elogia Soluciones Logísticas. Puedo consultar un manifiesto y explicarte si ya está radicado o por qué el Ministerio lo rechazó. Pégame el número para empezar, o pregúntame lo que necesites.",
 };
 
 export function ChatIaFlotante({ activo }: { activo: boolean }) {
@@ -96,7 +96,7 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
       {!abierto && (
         <button
           type="button"
-          aria-label="Abrir IA asistente"
+          aria-label="Abrir Elia, IA asistente de Elogia"
           onClick={() => setAbierto(true)}
           className="fixed right-5 bottom-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary/50"
         >
@@ -113,10 +113,10 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-foreground">
-                IA asistente
+                Elia
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                Consulta y explica manifiestos
+                IA asistente de Elogia
               </p>
             </div>
             <button
@@ -132,7 +132,7 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
               onClick={() => setAbierto(false)}
               className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
               title="Cerrar"
-              aria-label="Cerrar IA asistente"
+              aria-label="Cerrar Elia"
             >
               <X size={16} />
             </button>
