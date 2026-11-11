@@ -1,7 +1,7 @@
 # soporte-elogiasl (Elogia HUB) — Contexto y hoja de ruta
 
 > Proyecto y dominio: **soporte-elogiasl**. Nombre visible en la página: **Elogia HUB** (`lib/config.ts`).
-> Última actualización: 2026-11-06.
+> Última actualización: 2026-11-11.
 > Resumen para usuarios: [README.md](../README.md).
 
 ## 1. Qué es
@@ -39,6 +39,7 @@ Maestros        › Vehículo › Generar ficha técnica                        
 Estudios        › Solicitar · Mis solicitudes · Verificar · Historial     (disponible ← elogix; TusDatos real o simulado)
 Auditoría       › Visor de logs                                           (disponible)
 Configuración   › Roles · Usuarios                                        (disponible)
+Transversal     › Elia — IA asistente (botón flotante)                    (disponible, no está en lib/modulos.ts)
 ```
 
 Estados: `disponible`, `migracion`, `construccion`. Las hojas sin página propia las atiende
@@ -382,16 +383,102 @@ solicitud: visualmente se distingue del flujo individual sin abrir el detalle.
 - Auditoría: `estudio.solicitar`, `estudio.consulta`, `estudio.reporte`, `estudio.aprobar`,
   `estudio.rechazar` en `lib/gestion/etiquetas.ts`.
 
-## 7. Puesta en marcha
+## 6.7 Migraciones de Estudios (orden)
+1. `20261105000000_estudios.sql` — tablas base, policies, triggers.
+2. `20261105010000_estudios_remolque.sql` — soporte de remolque con propietario propio.
+3. `20261105030000_estudios_consultas.sql` — `estudio_consultas` como tabla separada.
+4. `20261105040000_estudios_cierre_y_limpieza.sql` — endurecimiento (RLS más estricta,
+   propietario del remolque movido a estudio_consultas, `tiene_permiso` eliminada).
+5. `20261106000000_estudios_combo.sql` — roles `tenedor`, `conductor`, `prop_remolque`;
+   columnas `tipo_doc_tenedor` / `documento_tenedor` / `fecha_expedicion_tenedor` y las
+   equivalentes del conductor + `incluir_antecedentes`.
+6. `20261110000000_estudios_prop_remolque_en_solicitud.sql` — vuelve a guardar
+   `tipo_doc_propietario_remolque` y `documento_propietario_remolque` en `estudio_solicitudes`
+   (RLS no deja al solicitante leer `estudio_consultas` y "Mis solicitudes" necesita verlos).
+
+## 7. Elia · IA asistente (transversal) — nuevo (2026-11-10)
+
+Botón flotante en toda la plataforma: la asistente se llama **Elia** y asiste al equipo con los
+manifiestos del Ministerio (RNDC vía Colombia Software), SICETAC o no.
+
+### 7.1 Arquitectura
+- **Cliente Gemini** `lib/ia/gemini.ts` — REST puro a
+  `generativelanguage.googleapis.com/v1beta/models/<modelo>:generateContent` sin SDK oficial.
+  `GEMINI_API_KEY` es **server-only**. **Cascada de modelos** probada en orden
+  (`gemini-2.5-flash` → `-lite` → `2.0-flash` → `2.0-flash-lite` → `1.5-flash` →
+  `-flash-8b` → `gemini-flash-lite-latest` → `gemini-flash-latest` → `gemini-pro-latest`):
+  404/429/503/timeout saltan al siguiente, otros errores se re-lanzan. Memoriza en el runtime el
+  modelo que acertó para no repetir las fallas. Si la cascada entera falla, el mensaje al usuario
+  es "La IA está ocupada, vuelve a intentarlo". Timeout por intento: **20 s**.
+- **Analizador de manifiesto** `lib/ia/analizar-manifiesto.ts` — dado un número detectado en el
+  mensaje, llama `consultarMinisterio` y arma un bloque de contexto con **las 7 secciones del
+  acordeón** (Clientes, Tercero, Remitente, Destinatario, Vehículo, Remesa, Manifiesto). Cada
+  entrada marcada como `OK` / `ERROR XXX999` / `SIN CONFIRMAR`. Adjunta los XML de las entradas
+  con error (hasta 3), recortados a 6 KB (inicio + final) para no gastar tokens.
+- **Parser del ministerio** `lib/sicetac/ministerio.ts` reescrito para extraer esas 7 secciones
+  (antes solo "Envío de Manifiesto"). Función `codigosDeError()` detecta `[A-Z]{3}\d{3}` en los
+  mensajes (MANxxx, REMxxx, VEHxxx, TERxxx, CMAxxx). El XML de los enlaces `consumoministerioxml.php`
+  viene URL-encoded sobre bytes **ISO-8859-1**; `decodificarLatin1()` lo decodifica byte a byte
+  (decodeURIComponent tira "URI malformed" con secuencias como `%CD`).
+- **Route handler** `app/api/ia/chat/route.ts` — POST, `getUsuarioActual` + header `x-portal`,
+  `maxDuration=60`. Recibe `{mensajes: [{rol, texto}]}`, detecta número en el último mensaje
+  del usuario, consulta el ministerio, adjunta el contexto al prompt y responde
+  `{respuesta, modelo}`. System prompt le enseña el nombre ("Elia"), el tono (cercana, tutea, sin
+  emojis, saluda solo al arrancar) y el orden de dependencia del acordeón. Conocimiento específico
+  de casos reales en Elogia:
+    - **REM054** "Contenedor vacío no puede llevar carga" — el campo clave es
+      `<codOperacionTransporte>` (debe valer `V`), no `cantidadCargada`. Solución: en Silogtran,
+      "Tipo de remesa RNDC" = "Contenedor vacío".
+    - **MAN045** flete bajo → módulo Expedir SICETAC.
+    - **MAN011** licencia vencida, **MAN027** DANE no válido, **MAN036** placa inactiva.
+  Códigos no listados: repite literal lo del Ministerio y señala sección/XML, no inventa causa.
+- **Diagnóstico** `app/api/ia/diagnostico/route.ts` — GET con sesión. Llama a `/v1beta/models?key=…`
+  y devuelve la lista real de modelos que acepta la API key + la cascada que probamos. Útil cuando
+  la cascada entera falla.
+- **UI** `components/ia/chat-flotante.tsx` — bubble `Sparkles` en la esquina inferior derecha
+  (`fixed right-5 bottom-5`). Al abrir, panel 420×620 con mensajes burbujas, textarea con Enter /
+  Shift+Enter, "Pensando…" mientras procesa, botón de reiniciar conversación y "cerrar". Historial
+  en `useEstadoSesion("ia.chat.mensajes")` — sobrevive entre módulos, se pierde al recargar o
+  cerrar sesión. Debajo de cada respuesta de la IA aparece en gris chiquito el modelo usado.
+- **Render Markdown** `components/ia/markdown.tsx` — parser mínimo sin dependencias para
+  `**bold**`, `*cursiva*`, `` `code` `` y listas con `-` / `*`; solo se aplica al contenido de la
+  IA (lo que escribe el usuario va como texto plano).
+- Montado en `app/(plataforma)/layout.tsx` como hijo de `<MemoriaSesion>`. Se oculta si
+  `iaDisponible()` devuelve false (falta `GEMINI_API_KEY`), así la plataforma funciona idéntica sin
+  la variable.
+
+### 7.2 Flujo de una respuesta
+1. El usuario escribe en el chat; `fetch("/api/ia/chat", {headers: {"x-portal": "1"}, body: {mensajes}})`.
+2. Guardia del route: mismo origen + `x-portal: 1` + `getUsuarioActual`.
+3. Si la cadena del último mensaje contiene `\d{5,20}`, llama a `analizarManifiesto(num)` →
+   `consultarMinisterio(num)` → `leerPaginaMinisterio(html)`.
+4. `contextoParaIA(analisis)` arma el bloque con las 7 secciones + XML de las entradas con error.
+5. `pedirRespuesta({system, historial})` recorre la cascada de modelos hasta obtener respuesta.
+6. Respuesta al navegador con `{respuesta, modelo}`. El componente la renderiza con Markdown y
+   pinta el nombre del modelo debajo.
+
+### 7.3 Decisiones
+- **Sin BD**: la memoria vive en el navegador (useEstadoSesion). Simple, sin RLS extra, sin PII.
+- **Sin SDK**: una sola función `fetch` es suficiente; cero dependencias nuevas.
+- **Cascada de modelos**: Google limita qué modelos ve cada API key (y qué modelos están sanos en
+  un momento dado). Mejor probar varios que pelear con un modelo específico.
+- **Elia tutea y es amable** pero no invita a correr acciones: solo consulta y explica; la acción
+  la hace el usuario desde el módulo que corresponda.
+- No se registra en `audit_logs` cada mensaje del chat; solo sus efectos indirectos (lo que el
+  usuario haga después en los módulos sí queda).
+
+## 8. Puesta en marcha
 
 1. `npm install` · `npm run dev`. Sin variables de Supabase arranca en **modo demostración**.
 2. Supabase → SQL Editor → pegar, en orden, los archivos de `supabase/migrations/`
-   (todos, por orden de nombre; el último es `20261105040000_estudios_cierre_y_limpieza`).
+   (todos, por orden de nombre; el último a hoy es
+   `20261110000000_estudios_prop_remolque_en_solicitud`).
 3. Authentication → desactivar "Allow new users to sign up"; Users → crear el primer usuario (Auto
    Confirm) y correr `supabase/seed.sql` con su correo.
 4. `.env` (o `.env.local`) a partir de `.env.example`: Supabase, `SESSION_SECRET`, cuenta de servicio
    de Silogtran (`SILOG_USUARIO`/`SILOG_CLAVE`), `WAF_CHROME_PATH` (solo local), `X_API_KEY` de AWS,
-   `RNDC_USUARIO`/`RNDC_CLAVE`, `CONTROLT_USUARIO`/`CONTROLT_CLAVE` y `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE`.
+   `RNDC_USUARIO`/`RNDC_CLAVE`, `CONTROLT_USUARIO`/`CONTROLT_CLAVE`,
+   `TUSDATOS_USUARIO`/`TUSDATOS_CLAVE` y `GEMINI_API_KEY` (opcional; sin ella se oculta Elia).
 5. Vercel (desplegado en https://elogiasl-hub.vercel.app): repo importado, **Node.js 24.x**,
    región de funciones **pdx1** (la misma de Supabase, us-west-2), las mismas variables salvo
    `WAF_CHROME_PATH` y el mismo `SESSION_SECRET` que en local (comparten la sesión de Silogtran
@@ -408,12 +495,14 @@ solicitud: visualmente se distingue del flujo individual sin abrir el detalle.
   servidor. `listarRoles`/`listarUsuarios` con `cache()` de React (una lectura por petición). El token
   del visor RNDC de Silogtran se reutiliza hasta 5 min antes de vencer (`lib/cumplidos/log-rndc.ts`).
 
-## 8. Estado actual (2026-11-10) y siguientes pasos
+## 9. Estado actual (2026-11-11) y siguientes pasos
 
 Producción: https://elogiasl-hub.vercel.app (Vercel, región pdx1, Node 24.x) contra el Supabase real.
-Cada push a `main` despliega. Todas las migraciones, incluida `20261106000000_estudios_combo`, están
-aplicadas en producción y el último commit está desplegado. Credenciales de TusDatos configuradas y
-el módulo de Estudios ya hizo consultas reales contra `dash-board.tusdatos.co`.
+Cada push a `main` despliega. Todas las migraciones hasta
+`20261110000000_estudios_prop_remolque_en_solicitud` están aplicadas en producción y el último
+commit está desplegado. Credenciales de TusDatos configuradas y el módulo de Estudios hace consultas
+reales contra `dash-board.tusdatos.co`. `GEMINI_API_KEY` configurada: Elia responde desde cualquier
+pantalla.
 
 **En producción (todo funcionando):**
 - ✅ Login, menú según accesos, inicio, modo claro por defecto (el oscuro solo si el usuario lo
@@ -433,10 +522,15 @@ el módulo de Estudios ya hizo consultas reales contra `dash-board.tusdatos.co`.
   client-side del reporte PDF (individual) o ZIP con los PDF (combo), sin esperar al PDF
   asíncrono de TusDatos.
 
-- ✅ **Asistente IA** (botón flotante en toda la plataforma, Gemini 2.0 Flash). Detecta un número
-  de manifiesto en el mensaje, consulta ministerio.colombiasoftware.net y, si está radicado o
-  trae error, se lo pasa a Gemini como contexto para explicar en lenguaje humano. El historial
-  vive en `useEstadoSesion` (no en BD). Se oculta si falta `GEMINI_API_KEY`.
+- ✅ **Elia — IA asistente** (botón flotante en toda la plataforma). Chat con Gemini vía cascada
+  de modelos (`gemini-2.5-flash` → `-lite` → 2.0 → 1.5 → pro-latest). Detecta un número de
+  manifiesto, consulta `ministerio.colombiasoftware.net`, lee las 7 secciones del acordeón
+  (Clientes, Tercero, Remitente, Destinatario, Vehículo, Remesa, Manifiesto) con sus XML y lo
+  pasa a la IA como contexto estructurado (OK / ERROR XXX999 / SIN CONFIRMAR). Prompt del sistema
+  con conocimiento de códigos reales de Elogia (REM054 → `codOperacionTransporte`, MAN045, MAN011,
+  MAN027, MAN036). Render Markdown en el chat (negrillas, listas, code). Historial en
+  `useEstadoSesion`, no se almacena en BD. Endpoint de diagnóstico en `/api/ia/diagnostico` para
+  listar los modelos disponibles para la API key.
 
 **Módulos en construcción:** Financiero › Factura.
 

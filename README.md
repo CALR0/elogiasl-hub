@@ -3,6 +3,8 @@
 **El portal de soporte de Elogia Soluciones Logísticas:** un solo lugar, con un solo inicio de
 sesión, donde el equipo encuentra las herramientas y soluciones para sus procesos de la operación.
 
+Producción: **https://elogiasl-hub.vercel.app**
+
 ---
 
 ## ¿Para qué sirve?
@@ -14,6 +16,8 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
   funcionalidades accede cada rol. Lo que no está habilitado no aparece en el menú.
 - **Todo queda registrado:** inicios y cierres de sesión, consultas, envíos a SAP, cambios de
   usuarios y roles, e intentos de entrar sin permiso. Se consulta en el visor de logs.
+- **Asistente integrada:** **Elia**, la IA del HUB, está en toda la plataforma para consultar
+  manifiestos y explicar errores del Ministerio en lenguaje claro.
 
 ## Módulos
 
@@ -28,6 +32,7 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 | **Estudios** | **Solicitar** · **Mis solicitudes** · **Verificar** · **Historial** | ✅ Funcionando (TusDatos real o modo simulado) |
 | **Auditoría** | **Visor de logs** | ✅ Funcionando |
 | **Configuración** | **Roles** · **Usuarios** | ✅ Funcionando |
+| **Transversal** | **Elia — IA asistente** (botón flotante) | ✅ Funcionando (si hay `GEMINI_API_KEY`) |
 
 ### Lo que ya funciona
 
@@ -41,25 +46,41 @@ Antes, cada herramienta era una aplicación aparte, con su propio acceso. El por
 - **Expedir manifiesto SICETAC** (Despacho › Manifiesto) — para manifiestos que el Ministerio
   rechazó porque el flete quedó por debajo del SICETAC (error MAN045): el portal calcula el valor
   SICETAC vigente del viaje, ajusta el flete y sus retenciones en el XML y, con tu confirmación,
-  lo expide ante el Ministerio mostrando el número de radicado.
+  lo expide ante el Ministerio mostrando el número de radicado. Cuando el portal del Ministerio
+  ofrece varias rutas para el par origen → destino, se usa siempre la primera (la estándar sin
+  "VÍA …").
 - **Migración cumplido RNDC** (Despacho › Cumplido manifiesto) — para cumplidos que el Ministerio
   rechazó por las retenciones (FOPAT o retención en la fuente) o por remesas sin cumplir: cumple
   primero las remesas que el RNDC no tenga cumplidas (con el último XML del log RNDC de Silogtran),
   toma el flete pactado que tiene el RNDC, corrige las retenciones y radica el cumplido.
-- **Estudios** — quien tiene **Solicitar** envía solicitudes por documento (CC, CE, PPT, PP, NIT) o
-  por vehículo (placa + propietario y, si lleva, remolque con su placa y propietario; cada placa se
-  consulta por aparte y se evalúan en un mismo estudio). Quedan en su bandeja **Mis solicitudes** con estado y decisión
-  del verificador (nunca ve hallazgos ni fuentes). Quien tiene **Verificar** revisa la bandeja
-  ordenada por nivel de riesgo, abre el detalle con el resultado de cada consulta (fuentes, hallazgos, reporte en pantalla y
-  PDF), y aprueba o rechaza con comentario. **Historial** lista lo decidido con filtros por decisión. Sin credenciales de
-  TusDatos, se procesa en **modo simulado** (deterministas, sin gastar créditos). *(Antes era la app
-  ELOGIX.)*
 - **Monitoreo vehículo** (Despacho › Tráfico) — localiza vehículos en el mapa y consulta su viaje
-  activo en Control T. Busca por una o varias **placas** (separadas por coma) o por **manifiesto u
-  orden**. Muestra la posición GPS, dirección, prestador, estado del viaje, avance, conductor con su
-  teléfono, origen, destino, cliente, transportador, comentario y observaciones. Si Control T no
-  tiene el viaje activo, cae en los viajes programados. Vista con mapa (modo mapa o satélite) y
-  panel colapsable por vehículo. *(Antes era la app TVIEWER.)*
+  activo en Control T. Busca por **placas** (textarea con separadores libres —
+  coma, espacio, salto de línea— o importando un Excel), o por **manifiesto u orden**. Muestra
+  posición GPS, dirección, prestador, estado del viaje, avance, conductor con su teléfono, origen,
+  destino, cliente, transportador, comentario y observaciones. Si Control T no tiene el viaje
+  activo, cae en los viajes programados. Vista con mapa (modo mapa o satélite), panel colapsable
+  por vehículo y **exportación a Excel** del resultado. También descarga una **plantilla** con
+  columna `placa *`. *(Antes era la app TVIEWER.)*
+- **Estudios** — quien tiene **Solicitar** envía solicitudes por documento (CC, CE, PPT, PP, NIT) o
+  por vehículo (placa + propietario y, si lleva, remolque con su placa y propietario). El formulario
+  de vehículo es un **combo**: puede agregarse tenedor / poseedor, conductor y marcar "Incluir
+  consulta de antecedentes" del propietario (y del propietario del remolque). Cada placa y cada
+  persona se consulta por aparte y todas quedan como un solo estudio.
+  Quedan en su bandeja **Mis solicitudes** con pastilla Individual / Combo y detalle expandible de
+  lo digitado, estado y decisión del verificador (nunca ve hallazgos ni fuentes). Quien tiene
+  **Verificar** revisa la bandeja ordenada por nivel de riesgo, abre el detalle con el resultado de
+  cada consulta (fuentes, hallazgos, reporte en pantalla y PDF), descarga individualmente o en ZIP
+  cuando es combo, y aprueba o rechaza con comentario. **Historial** lista lo decidido con filtros.
+  Chip de créditos TusDatos en la esquina del encabezado (restantes, con umbrales 100 / 50). Sin
+  credenciales de TusDatos se procesa en **modo simulado** (deterministas, sin gastar créditos).
+  *(Antes era la app ELOGIX.)*
+- **Elia — IA asistente** (botón flotante, toda la plataforma) — chat con un botón de estrella en
+  la esquina inferior derecha. Pensada para resolver dudas de la operación logística: si le pegas
+  un número de manifiesto, consulta la página del Ministerio en Colombia Software, lee TODAS las
+  secciones del acordeón (Tercero, Vehículo, Remesa, Manifiesto…) con sus XML enviados, y te dice
+  en lenguaje claro si ya está radicado, qué error aparece (MAN045, REM054, VEH003, …) y dónde
+  corregir. Conocimiento específico de los códigos más comunes en Elogia; nunca inventa. Historial
+  en memoria de la pestaña (se pierde al recargar). Se oculta si no hay `GEMINI_API_KEY`.
 - **Roles** — crear, editar, activar o inactivar roles, marcando a qué partes del portal acceden.
   Nadie (salvo el administrador) puede modificar el rol al que pertenece.
 - **Usuarios** — crear cuentas, asignarles un rol, editarlas y activarlas o inactivarlas. Las
@@ -74,22 +95,40 @@ vuelves** (incluso si un lote sigue procesando); se borran al recargar la págin
 
 Los módulos "en construcción" ya tienen su lugar en el menú y en los permisos; se irán desarrollando.
 
-## Cómo se conecta con Silogtran
+## Cómo se conecta con los sistemas externos
 
-Silogtran no tiene una API, así que el portal se conecta como lo haría una persona: inicia sesión
-con una **cuenta de servicio** (configurada en el servidor) y lee la información de sus pantallas.
-Esa sesión se guarda cifrada y se **reutiliza** entre consultas y entre módulos, de modo que no se
-inicia sesión a cada rato; solo cuando Silogtran la vence. Tiene protecciones para que la cuenta no
-se bloquee por intentos repetidos. En el visor de logs siempre queda qué usuario del portal hizo
-cada consulta.
+- **Silogtran** (PRADO / Colombia Software) no tiene API: el portal se conecta como lo haría una
+  persona usando una **cuenta de servicio** cuyo login + cookies de AWS WAF se guardan **cifrados**
+  en Supabase y se reutilizan entre peticiones y entre instancias de Vercel. Solo vuelve a iniciar
+  sesión cuando Silogtran la vence; un candado en la BD evita logins en paralelo y topes por hora/día
+  protegen la cuenta compartida. En Auditoría siempre queda qué usuario del portal hizo cada consulta.
+- **RNDC** (web service del Ministerio vía Colombia Software, `rndcws` / `rndcws2`) — SOAP directo
+  desde el servidor: proceso 4 (manifiesto), 5 (cumplido de remesa), 6 (cumplido de manifiesto),
+  11 (tercero), 12 (vehículo). Credenciales en `RNDC_USUARIO` / `RNDC_CLAVE` (o del propio XML).
+- **Portal SICETAC** (`plc.mintransporte.gov.co`) — reproduce los postbacks ASP.NET
+  (CONFIGURACION → CARGA → UNIDAD → TIPOCARGA → ORIGEN → DESTINO → RUTA → suma de validación →
+  Calcular) sin navegador, con caché mensual en memoria.
+- **TusDatos** (`dash-board.tusdatos.co`) — Basic Auth; `/api/launch` (personas) y
+  `/api/launch/car` (vehículos), `GET /api/results/{jobid}` para pollear, `GET /api/report_json/{id}`
+  para los hallazgos. Sin credenciales se activa el simulador determinista.
+- **Control T** (`app.controlt.com.co`) — API Public con Bearer OAuth (login JSON) + API Web para
+  posición en tiempo real. Token en memoria del runtime (~12 h).
+- **Gemini** (`generativelanguage.googleapis.com`) — Elia usa una cascada de modelos
+  (`gemini-2.5-flash` → `-lite` → `2.0-flash` → `1.5-flash` → `pro-latest`) y se queda con el primero
+  que la API key acepte. Diagnóstico en `/api/ia/diagnostico` (requiere sesión) para ver qué modelos
+  tiene disponibles tu cuenta.
+- **AWS (SAP)** — `POST /events` con `X_API_KEY` para crear/actualizar anticipos de flota de
+  terceros; verificación previa con `GET /logs/{id}`.
 
 ## Tecnología (resumen)
 
-- **Next.js 16 + React 19 + TypeScript**, estilos con **Tailwind CSS**.
-- **Supabase**: inicio de sesión, base de datos con permisos por fila y actualizaciones en vivo.
-- **Vercel** para publicarlo en internet: https://elogiasl-hub.vercel.app
-- Diseño con la gama de colores y el logo de Elogia, adaptado a celular. Abre en modo claro; el
-  oscuro se activa con el botón de tema y se recuerda en ese navegador.
+- **Next.js 16** (App Router, `proxy.ts`, Turbopack) + **React 19** + **TypeScript**.
+- Estilos con **Tailwind CSS v4**, íconos **lucide-react**, validación **Zod**.
+- **Supabase**: inicio de sesión, base de datos con RLS y actualizaciones en vivo (Realtime).
+- **Vercel** para el despliegue (Node.js 24.x, región pdx1).
+- Diseño con la gama de colores "Salvia Elogia" y el logo de Elogia, adaptado a celular. Abre en
+  modo claro; el oscuro se activa con el botón de tema y se recuerda en ese navegador.
+- Auditoría granular (`audit_logs`) escrita solo por el servidor.
 
 ## Para desarrolladores
 
@@ -98,11 +137,19 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-- Variables de entorno: copia `.env.example` a `.env` (o `.env.local`) y complétalo.
-- Base de datos: los archivos de `supabase/migrations/` se aplican en orden en el SQL Editor de Supabase.
-- Pruebas: `npm run db:test` (permisos de la base de datos), `npm run test:fichas`,
-  `npm run test:anticipos`, `npm run test:sicetac`, `npm run test:cumplidos`, `npm run test:estudios`, `npm run probar:waf` (firewall de Silogtran),
-  `npm run probar:sicetac` (cálculo en el portal SICETAC).
+- Variables de entorno: copia `.env.example` a `.env` (o `.env.local`) y complétalo. Sin Supabase
+  arranca en **modo demostración** (usuario de ejemplo con acceso total, datos en memoria).
+- Base de datos: los archivos de `supabase/migrations/` se aplican en orden en el SQL Editor de
+  Supabase.
+- Pruebas:
+  - `npm run db:test` — RLS, funciones y triggers en PGlite (80+ pruebas).
+  - `npm run test:fichas` — parser / PDF / Excel de fichas.
+  - `npm run test:anticipos` — parser del log de Silogtran.
+  - `npm run test:sicetac` — página del ministerio + ajuste del XML.
+  - `npm run test:cumplidos` — página de cumplidos y radicación.
+  - `npm run test:estudios` — respuestas de TusDatos contra un servidor falso.
+  - `npm run probar:waf` — diagnóstico del firewall de Silogtran.
+  - `npm run probar:sicetac` — cálculo contra el portal SICETAC en vivo.
 - Revisión: `npm run lint` · `npm run type-check` · `npm run build`.
 
 El detalle técnico, las decisiones tomadas y el estado del proyecto están en
