@@ -49,7 +49,14 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
   }, [abierto, mensajes.length, cargando]);
 
   useEffect(() => {
-    if (abierto) textareaRef.current?.focus();
+    if (!abierto) return;
+    // En móvil no autoenfocamos: así no se abre el teclado al entrar (ni
+    // dispara el zoom involuntario de iOS). El usuario toca el textarea
+    // cuando quiere escribir. Desde tablet/desktop sí tiene sentido.
+    const esMovil =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 639px)").matches;
+    if (!esMovil) textareaRef.current?.focus();
   }, [abierto]);
 
   if (!activo) return null;
@@ -189,7 +196,12 @@ export function ChatIaFlotante({ activo }: { activo: boolean }) {
                 }}
                 placeholder="Pégame un número de manifiesto o pregúntame algo…"
                 rows={2}
-                className="min-h-[48px] max-h-32 flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/40"
+                /*
+                 * text-base (16 px) en móvil, text-sm (14 px) desde sm. iOS
+                 * Safari acerca automáticamente cualquier input con fuente
+                 * menor a 16 px al enfocarlo; con 16 px exactos no lo hace.
+                 */
+                className="min-h-[48px] max-h-32 flex-1 resize-none rounded-md border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/40 sm:text-sm"
                 disabled={cargando}
               />
               <button
