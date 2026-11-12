@@ -327,11 +327,17 @@ multipágina). El botón muestra el progreso ("Cargando 2/3", "Generando 2/3", "
 DOM del navegador y se descartan al cerrar la página. La conversión a PDF ocurre client-side. Lo
 único que persiste en la BD es la auditoría (`estudio.reporte`: quién, cuándo, qué consulta).
 
-**Casilla "Incluir consulta de antecedentes" (consulta por placa):** gobierna a TODAS las personas.
-Marcada: placas + antecedentes de propietario, propietario del remolque (si es otro), tenedor y
-conductor diligenciados. Sin marcar: solo las placas (cabezote y remolque); tenedor y conductor
-escritos se ignoran (no se guardan ni se envían) y el formulario lo avisa. Regla en `planDeConsultas`
-(`lib/estudios/resultado.ts`) y `entradaVehiculo` (`lib/estudios/procesar.ts`).
+**Casilla "Incluir consulta de antecedentes" (consulta por placa):** decide si es combo.
+Marcada: cabezote + remolque + antecedentes de propietario, propietario del remolque (si es otro),
+tenedor y conductor diligenciados. Sin marcar: SOLO el cabezote con su propietario; remolque, tenedor
+y conductor escritos se ignoran (no se guardan ni se envían) y el formulario lo avisa. Regla en
+`planDeConsultas` (`lib/estudios/resultado.ts`) y `entradaVehiculo` (`lib/estudios/procesar.ts`).
+
+**Relanzar desde Verificar:** cada consulta en error muestra "Relanzar consulta" en el detalle
+(`relanzar` en `verificar/acciones.ts` → `relanzarConsulta` en `procesar.ts`), solo con permiso
+`estudios.verificar`, estudio real y sin decidir. Devuelve consulta y solicitud a `procesando`, lanza
+con 3 intentos nuevos y audita `estudio.relanzar`. La bandeja ahora también lista los estudios con
+todas las consultas fallidas (estado `error`) para poder relanzarlos.
 
 **Lanzamiento con reintentos (12-nov-2026, SOL-000005):** `/api/launch/car` puede tardar más de 30 s
 o responder **200 con `{ error }` y sin `jobid`**. El cliente exige el `jobid` (`lanzarJob`), el

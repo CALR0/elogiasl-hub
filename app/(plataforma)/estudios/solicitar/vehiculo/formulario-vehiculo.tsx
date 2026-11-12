@@ -109,14 +109,14 @@ export function FormularioVehiculo() {
       lineas.push(`Conductor: ${datos.tipoConductor} ${datos.documentoConductor || "—"}${sinConsulta}`);
     if (datos.incluirRemolque) {
       if (datos.remolqueMismoPropietario)
-        lineas.push(`Remolque: ${datos.placaRemolque || "—"} (mismo propietario)`);
+        lineas.push(`Remolque: ${datos.placaRemolque || "—"} (mismo propietario)${sinConsulta}`);
       else
         lineas.push(
-          `Remolque: ${datos.placaRemolque || "—"} · ${datos.tipoPropietarioRemolque} ${datos.documentoPropietarioRemolque || "—"}`,
+          `Remolque: ${datos.placaRemolque || "—"} · ${datos.tipoPropietarioRemolque} ${datos.documentoPropietarioRemolque || "—"}${sinConsulta}`,
         );
     }
     if (datos.incluirAntecedentes)
-      lineas.push("Incluye consulta de antecedentes de las personas.");
+      lineas.push("Combo: incluye remolque y antecedentes de las personas.");
     return lineas;
   }, [datos]);
 
@@ -144,9 +144,9 @@ export function FormularioVehiculo() {
 
   const pideDocRemolque =
     datos.incluirRemolque && !datos.remolqueMismoPropietario;
-  const personasSinConsultar =
+  const comboSinConsultar =
     !datos.incluirAntecedentes &&
-    (datos.incluirTenedor || datos.incluirConductor);
+    (datos.incluirTenedor || datos.incluirConductor || datos.incluirRemolque);
 
   return (
     <form
@@ -418,9 +418,9 @@ export function FormularioVehiculo() {
             Incluir consulta de antecedentes
           </span>
           <span className="text-muted-foreground block text-xs">
-            Consulta los antecedentes de las personas diligenciadas:
-            propietario, propietario del remolque, tenedor y conductor. Sin
-            marcar, solo se consultan las placas.
+            Consulta en combo: remolque y antecedentes de propietario,
+            propietario del remolque, tenedor y conductor diligenciados. Sin
+            marcar, solo se consulta el cabezote con su propietario.
           </span>
         </span>
         <input
@@ -431,15 +431,16 @@ export function FormularioVehiculo() {
         />
       </label>
 
-      {personasSinConsultar && (
+      {comboSinConsultar && (
         <p
           role="status"
           className="border-construccion/40 bg-construccion-bg text-construccion flex items-start gap-2 rounded-xl border p-3 text-sm"
         >
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
-            Agregaste tenedor o conductor, pero no se consultarán: marca
-            &laquo;Incluir consulta de antecedentes&raquo; para incluirlos.
+            Agregaste remolque, tenedor o conductor, pero no se consultarán:
+            solo irá el cabezote con su propietario. Marca &laquo;Incluir
+            consulta de antecedentes&raquo; para enviar el combo completo.
           </span>
         </p>
       )}

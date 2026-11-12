@@ -229,12 +229,13 @@ export function planDeConsultas(e: EntradaConsulta): PlanConsulta[] {
   const consultas: PlanConsulta[] = [
     placa("cabezote", e.placa ?? "", tipoPropCabezote, docPropCabezote),
   ];
+  // Sin la casilla de antecedentes NO hay combo: solo el cabezote con su
+  // propietario, aunque se haya diligenciado remolque, tenedor o conductor.
+  if (!e.incluirAntecedentes) return consultas;
+
   if (e.placaRemolque) {
     consultas.push(placa("remolque", e.placaRemolque, tipoPropRem, docPropRem));
   }
-  // Sin la casilla de antecedentes solo se consultan las placas: ninguna
-  // persona (propietarios, tenedor, conductor), aunque se haya diligenciado.
-  if (!e.incluirAntecedentes) return consultas;
 
   consultas.push(
     persona("propietario", tipoPropCabezote, docPropCabezote, null),

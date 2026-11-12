@@ -142,8 +142,9 @@ const mismoDueno = planDeConsultas({
   placa: "ABC123",
   tipoDocPropietario: "CC",
   placaRemolque: "R12345",
+  incluirAntecedentes: true,
 });
-assert.equal(mismoDueno.length, 2);
+assert.equal(mismoDueno.length, 3);
 assert.equal(mismoDueno[1].rol, "remolque");
 assert.equal(mismoDueno[1].placa, "R12345");
 assert.equal(mismoDueno[1].documento, "111", "mismo propietario del cabezote");
@@ -158,11 +159,12 @@ const otroDueno = planDeConsultas({
   placaRemolque: "S54321",
   tipoDocPropietarioRemolque: "NIT",
   documentoPropietarioRemolque: "900123",
+  incluirAntecedentes: true,
 });
 assert.equal(otroDueno[1].documento, "900123");
 assert.equal(otroDueno[1].tipoDoc, "NIT");
 
-// Sin la casilla de antecedentes: solo placas, aunque haya personas escritas
+// Sin la casilla de antecedentes: solo el cabezote, aunque escriban el resto
 const comboSinAntecedentes = planDeConsultas({
   ...vacio,
   tipoDocumento: "PLACA",
@@ -179,8 +181,9 @@ const comboSinAntecedentes = planDeConsultas({
 });
 assert.deepEqual(
   comboSinAntecedentes.map((c) => c.rol),
-  ["cabezote", "remolque"],
+  ["cabezote"],
 );
+assert.equal(comboSinAntecedentes[0].documento, "111");
 
 // Con la casilla: placas + todas las personas diligenciadas
 const comboCompleto = planDeConsultas({

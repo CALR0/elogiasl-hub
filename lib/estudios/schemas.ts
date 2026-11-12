@@ -164,9 +164,9 @@ export const consultaVehiculoSchema = z
     remolqueMismoPropietario: z.boolean(),
     tipoPropietarioRemolque: z.enum(["CC", "CE", "NIT", "TI"]),
     documentoPropietarioRemolque: z.string().trim(),
-    /** Si true, se piden antecedentes (/api/launch) de todas las personas:
-     *  propietario, propietario del remolque, tenedor y conductor. Si false,
-     *  solo se consultan las placas y lo diligenciado de personas se ignora. */
+    /** Si true es un combo: remolque y antecedentes (/api/launch) de
+     *  propietario, propietario del remolque, tenedor y conductor. Si false
+     *  solo se consulta el cabezote con su propietario; lo demás se ignora. */
     incluirAntecedentes: z.boolean(),
     autorizacion,
   })
@@ -193,7 +193,7 @@ export const consultaVehiculoSchema = z
         "conductor",
       );
     }
-    if (!d.incluirRemolque) return;
+    if (!d.incluirAntecedentes || !d.incluirRemolque) return;
     if (!PLACA_REMOLQUE_REGEX.test(d.placaRemolque)) {
       ctx.addIssue({
         code: "custom",

@@ -32,6 +32,7 @@ export const ACCIONES_AUDITORIA: Record<string, string> = {
   "estudio.solicitar": "Solicitó un estudio",
   "estudio.consulta": "Resultado de una consulta de estudio",
   "estudio.reporte": "Vio o descargó el reporte de un estudio",
+  "estudio.relanzar": "Relanzó una consulta de estudio",
   "estudio.aprobar": "Aprobó un estudio",
   "estudio.rechazar": "Rechazó un estudio",
 };

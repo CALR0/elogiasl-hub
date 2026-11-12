@@ -18,7 +18,7 @@ import { Field } from "@/components/ui/field";
 import { PastillaNivel } from "@/components/estudios/pastilla-nivel";
 import type { Estudio } from "@/lib/estudios/tipos";
 import { fechaHora } from "@/lib/utils";
-import { aprobar, rechazar } from "../acciones";
+import { aprobar, rechazar, relanzar } from "../acciones";
 import { TarjetaConsulta } from "./tarjeta-consulta";
 
 type Accion = "aprobar" | "rechazar";
@@ -35,12 +35,29 @@ export function DetalleEstudio({
   const [comentario, setComentario] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
   const [procesando, startTransition] = useTransition();
+  const [relanzandoId, setRelanzandoId] = useState<string | null>(null);
+  const [avisoRelanzar, setAvisoRelanzar] = useState<string | null>(null);
+  const [, startRelanzar] = useTransition();
 
   const decidido = estudio.decision !== "pendiente";
   const enProceso = estudio.estado === "procesando";
   const conError = estudio.consultas.filter((c) => c.estado === "error").length;
   // Solo se decide con las consultas terminadas
-  const puedeDecidir = !decidido && !soloLectura && !enProceso;
+  const puedeDecidir =
+    !decidido && !soloLectura && estudio.estado === "finalizada";
+  const puedeRelanzar = !decidido && !soloLectura && !estudio.simulada;
+
+  function relanzarConsulta(consultaId: string) {
+    setAvisoRelanzar(null);
+    setRelanzandoId(consultaId);
+    startRelanzar(async () => {
+      const resultado = await relanzar({ consultaId });
+      if (!resultado.ok)
+        setAvisoRelanzar(`No se pudo relanzar: ${resultado.error}`);
+      setRelanzandoId(null);
+      router.refresh();
+    });
+  }
 
   function ejecutar() {
     if (!accion) return;
@@ -88,12 +105,26 @@ export function DetalleEstudio({
               {conError === 1
                 ? "Una consulta no se completó: el resultado no la incluye."
                 : `${conError} consultas no se completaron: el resultado no las incluye.`}
+              {puedeRelanzar && " Puedes relanzarlas abajo."}
             </p>
+          )}
+          {avisoRelanzar && (
+            <Aviso tipo="error" className="mt-3">
+              {avisoRelanzar}
+            </Aviso>
           )}
         </section>
 
         {estudio.consultas.map((c) => (
-          <TarjetaConsulta key={c.id} consulta={c} />
+          <TarjetaConsulta
+            key={c.id}
+            consulta={c}
+            onRelanzar={
+              puedeRelanzar ? () => relanzarConsulta(c.id) : undefined
+            }
+            relanzando={relanzandoId === c.id}
+            bloqueado={relanzandoId !== null}
+          />
         ))}
       </div>
 
@@ -172,7 +203,9 @@ export function DetalleEstudio({
             <p className="text-muted-foreground mt-2 text-sm">
               {enProceso
                 ? "Se podrá decidir cuando terminen las consultas."
-                : "Pendiente de revisión por el analista."}
+                : estudio.estado === "error"
+                  ? "Ninguna consulta se completó: relanza las consultas para poder decidir."
+                  : "Pendiente de revisión por el analista."}
             </p>
           </section>
         )}

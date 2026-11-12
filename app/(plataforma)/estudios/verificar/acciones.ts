@@ -6,6 +6,7 @@ import { registrarAuditoria } from "@/lib/auditoria";
 import { requirePermiso } from "@/lib/auth";
 import { MODO_DEMO } from "@/lib/demo";
 import { almacenEstudios } from "@/lib/estudios/demo";
+import { relanzarConsulta } from "@/lib/estudios/procesar";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const MODULO = "estudios.verificar";
@@ -100,6 +101,45 @@ async function decidir(
   revalidatePath(`/estudios/verificar/${numero}`);
   revalidatePath("/estudios/mis-solicitudes");
   return { ok: true };
+}
+
+const Relanzar = z.object({ consultaId: z.uuid() });
+
+/** Vuelve a lanzar en TusDatos una consulta que quedó con error. */
+export async function relanzar(entrada: unknown): Promise<Resultado> {
+  const usuario = await requirePermiso(MODULO);
+  const parse = Relanzar.safeParse(entrada);
+  if (!parse.success) return { ok: false, error: "Datos inválidos." };
+
+  let r: Awaited<ReturnType<typeof relanzarConsulta>>;
+  try {
+    r = await relanzarConsulta(parse.data.consultaId);
+  } catch (e) {
+    r = {
+      ok: false,
+      numero: null,
+      error: e instanceof Error ? e.message : "No se pudo relanzar.",
+    };
+  }
+  await registrarAuditoria({
+    actorId: usuario.id,
+    actorEmail: usuario.email,
+    modulo: MODULO,
+    accion: "estudio.relanzar",
+    entidad: "estudio",
+    entidadId: r.numero ? String(r.numero) : undefined,
+    resultado: r.ok ? "ok" : "error",
+    detalle: {
+      consulta: parse.data.consultaId,
+      ...(r.ok ? { jobid: r.jobid } : { mensaje: r.error }),
+    },
+  });
+  if (r.numero) {
+    revalidatePath("/estudios/verificar");
+    revalidatePath(`/estudios/verificar/${r.numero}`);
+    revalidatePath("/estudios/mis-solicitudes");
+  }
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
 
 export async function aprobar(entrada: unknown): Promise<Resultado> {

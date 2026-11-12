@@ -7,11 +7,12 @@ import {
   CircleAlert,
   ExternalLink,
   LoaderCircle,
+  RotateCw,
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
 import { PastillaNivel } from "@/components/estudios/pastilla-nivel";
-import { buttonClasses } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import type {
   ConsultaEstudio,
   NivelHallazgo,
@@ -69,8 +70,15 @@ function conteoFuentes(fuentes: Record<string, ResultadoFuente>) {
  */
 export function TarjetaConsulta({
   consulta: c,
+  onRelanzar,
+  relanzando = false,
+  bloqueado = false,
 }: {
   consulta: ConsultaEstudio;
+  /** Solo el verificador, y mientras el estudio no se haya decidido. */
+  onRelanzar?: () => void;
+  relanzando?: boolean;
+  bloqueado?: boolean;
 }) {
   const datos = datosSimples(c.datos);
   const totalFuentes = Object.keys(c.fuentes).length;
@@ -113,6 +121,27 @@ export function TarjetaConsulta({
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span className="break-words">{c.mensajeError}</span>
         </p>
+      )}
+
+      {c.estado === "error" && onRelanzar && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variante="secundario"
+            onClick={onRelanzar}
+            disabled={relanzando || bloqueado}
+          >
+            {relanzando ? (
+              <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <RotateCw className="size-4" aria-hidden />
+            )}
+            {relanzando ? "Relanzando…" : "Relanzar consulta"}
+          </Button>
+          <span className="text-muted-foreground text-xs">
+            Vuelve a enviarla a TusDatos. Consume un crédito.
+          </span>
+        </div>
       )}
 
       {c.estado === "finalizada" && (

@@ -8,6 +8,9 @@ import { puede, requireUsuario } from "@/lib/auth";
 import { obtenerEstudio } from "@/lib/estudios/datos";
 import { DetalleEstudio } from "./detalle-estudio";
 
+// Relanzar una consulta en TusDatos corre dentro de la acción de esta página
+export const maxDuration = 60;
+
 export const metadata: Metadata = { title: "Detalle del estudio" };
 
 type Params = { numero: string };

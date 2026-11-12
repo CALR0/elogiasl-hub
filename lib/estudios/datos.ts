@@ -198,9 +198,7 @@ function construirFila(f: FilaPendienteRaw): FilaBandeja {
 export async function listarPendientes(): Promise<FilaBandeja[]> {
   if (MODO_DEMO) {
     return almacenEstudios()
-      .solicitudes.filter(
-        (s) => s.decision === "pendiente" && s.estado !== "error",
-      )
+      .solicitudes.filter((s) => s.decision === "pendiente")
       .map(aBandeja)
       .sort(porRiesgo);
   }
@@ -211,7 +209,6 @@ export async function listarPendientes(): Promise<FilaBandeja[]> {
       "id, numero, tipo_documento, documento, nombre, placa, placa_remolque, documento_tenedor, documento_conductor, incluir_antecedentes, estado, decision, simulada, created_at, perfiles:created_by ( nombre_completo, email ), estudio_resultados ( nombre_consultado, nivel_maximo )",
     )
     .eq("decision", "pendiente")
-    .neq("estado", "error")
     .order("created_at", { ascending: false });
   if (error) {
     console.error("[estudios]", error);

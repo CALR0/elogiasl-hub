@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronRight, Layers, LoaderCircle, Search } from "lucide-react";
+import {
+  ChevronRight,
+  Layers,
+  LoaderCircle,
+  Search,
+  TriangleAlert,
+} from "lucide-react";
 import { Input } from "@/components/ui/field";
 import { Paginacion, usePaginacion } from "@/components/ui/paginacion";
 import { BotonDescargarEstudio } from "@/components/estudios/boton-descargar-estudio";
@@ -63,6 +69,11 @@ export function BandejaVerificar({ items }: { items: FilaBandeja[] }) {
               <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1.5 text-xs font-medium">
                 <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
                 En proceso
+              </span>
+            ) : s.estado === "error" ? (
+              <span className="border-destructive/30 bg-destructive/5 text-destructive inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium">
+                <TriangleAlert className="size-3.5" aria-hidden />
+                Con error
               </span>
             ) : (
               <PastillaNivel nivel={s.nivel} />

@@ -95,10 +95,10 @@ export function entradaDocumento(d: ConsultaDocumento): EntradaConsulta {
 }
 
 export function entradaVehiculo(v: ConsultaVehiculo): EntradaConsulta {
-  const incluir = v.incluirRemolque;
+  // Sin la casilla de antecedentes no hay combo: remolque, tenedor y
+  // conductor no se guardan ni se envían aunque se hayan diligenciado.
+  const incluir = v.incluirAntecedentes && v.incluirRemolque;
   const mismo = v.remolqueMismoPropietario;
-  // Sin la casilla de antecedentes no se consulta a ninguna persona: lo
-  // diligenciado en tenedor y conductor no se guarda ni se envía.
   const tenedor = v.incluirAntecedentes && v.incluirTenedor;
   const conductor = v.incluirAntecedentes && v.incluirConductor;
   return {
@@ -585,13 +585,144 @@ interface FilaPendiente {
   datos: Record<string, unknown> | null;
   created_at: string;
   ultima_revision: string | null;
-  estudio_solicitudes: {
-    numero: number;
-    nombre: string | null;
-    fecha_expedicion: string | null;
-    fecha_expedicion_tenedor: string | null;
-    fecha_expedicion_conductor: string | null;
-  } | null;
+  estudio_solicitudes: (DatosSolicitudPlan & { numero: number }) | null;
+}
+
+interface DatosSolicitudPlan {
+  nombre: string | null;
+  fecha_expedicion: string | null;
+  fecha_expedicion_tenedor: string | null;
+  fecha_expedicion_conductor: string | null;
+}
+
+/** Reconstruye lo que se envía a TusDatos desde lo guardado en la BD. */
+function planDeFila(
+  f: {
+    rol: RolConsulta;
+    placa: string | null;
+    tipo_doc: string;
+    documento: string | null;
+  },
+  s: DatosSolicitudPlan | null,
+): PlanConsulta {
+  return {
+    rol: f.rol,
+    placa: f.placa,
+    tipoDoc: f.tipo_doc,
+    documento: f.documento ?? "",
+    nombre: f.rol === "documento" ? (s?.nombre ?? null) : null,
+    fechaExpedicion:
+      (f.rol === "documento"
+        ? s?.fecha_expedicion
+        : f.rol === "tenedor"
+          ? s?.fecha_expedicion_tenedor
+          : f.rol === "conductor"
+            ? s?.fecha_expedicion_conductor
+            : null) ?? null,
+  };
+}
+
+// ─── Relanzamiento manual (verificador) ─────────────────────────────────────
+
+export type ResultadoRelanzar =
+  | { ok: true; numero: number; jobid: string | null }
+  | { ok: false; numero: number | null; error: string };
+
+/**
+ * Vuelve a lanzar una consulta que quedó en error. La pide el verificador desde
+ * el detalle del estudio, mientras no se haya decidido. Gasta un crédito.
+ */
+export async function relanzarConsulta(
+  consultaId: string,
+): Promise<ResultadoRelanzar> {
+  const cliente = obtenerClienteTusDatos();
+  if (MODO_DEMO || !cliente)
+    return {
+      ok: false,
+      numero: null,
+      error: "Las consultas simuladas no se pueden relanzar.",
+    };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("estudio_consultas")
+    .select(
+      "id, solicitud_id, rol, placa, tipo_doc, documento, estado, estudio_solicitudes ( numero, decision, simulada, nombre, fecha_expedicion, fecha_expedicion_tenedor, fecha_expedicion_conductor )",
+    )
+    .eq("id", consultaId)
+    .maybeSingle();
+  if (error || !data)
+    return { ok: false, numero: null, error: "Consulta no encontrada." };
+  const f = data as unknown as {
+    id: string;
+    solicitud_id: string;
+    rol: RolConsulta;
+    placa: string | null;
+    tipo_doc: string;
+    documento: string | null;
+    estado: string;
+    estudio_solicitudes:
+      | (DatosSolicitudPlan & {
+          numero: number;
+          decision: string;
+          simulada: boolean;
+        })
+      | null;
+  };
+  const s = f.estudio_solicitudes;
+  const numero = s?.numero ?? 0;
+  const falla = (mensaje: string): ResultadoRelanzar => ({
+    ok: false,
+    numero,
+    error: mensaje,
+  });
+  if (!s) return falla("Estudio no encontrado.");
+  if (s.simulada) return falla("Las consultas simuladas no se pueden relanzar.");
+  if (s.decision !== "pendiente") return falla("El estudio ya fue decidido.");
+  if (f.estado !== "error")
+    return falla("Solo se relanzan las consultas que quedaron con error.");
+
+  // Atómico: si dos personas oprimen a la vez, solo una la relanza
+  const { data: tomada } = await admin
+    .from("estudio_consultas")
+    .update({
+      estado: "procesando",
+      jobid: null,
+      mensaje_error: null,
+      finalizada_at: null,
+      datos: {},
+      ultima_revision: new Date().toISOString(),
+    })
+    .eq("id", f.id)
+    .eq("estado", "error")
+    .select("id");
+  if (!tomada?.length) return falla("La consulta ya se está relanzando.");
+
+  await admin
+    .from("estudio_solicitudes")
+    .update({ estado: "procesando", finalizada_at: null })
+    .eq("id", f.solicitud_id)
+    .eq("decision", "pendiente")
+    .in("estado", ["finalizada", "error"]);
+  await evento(
+    admin,
+    f.solicitud_id,
+    "info",
+    `${etiquetaConsulta(f)}: relanzada por el analista.`,
+  );
+
+  const r = await intentarLanzar(admin, cliente, {
+    id: f.id,
+    solicitudId: f.solicitud_id,
+    numero,
+    plan: planDeFila(f, s),
+    intentosPrevios: 0,
+  });
+  if (r.error) {
+    await cerrarSolicitud(admin, f.solicitud_id);
+    return falla(r.error);
+  }
+  return { ok: true, numero, jobid: r.jobid };
 }
 
 /** Pregunta a TusDatos por las consultas en proceso. Devuelve cuántas cambiaron. */
@@ -672,28 +803,13 @@ async function revisarConsulta(
       ).select("id");
       if (!tomada?.length) return false;
 
-      const s = f.estudio_solicitudes;
       const previos = (f.datos?.lanzamiento as { intentos?: number } | undefined)
         ?.intentos;
       const r = await intentarLanzar(admin, cliente, {
         id: f.id,
         solicitudId: f.solicitud_id,
         numero,
-        plan: {
-          rol: f.rol,
-          placa: f.placa,
-          tipoDoc: f.tipo_doc,
-          documento: f.documento ?? "",
-          nombre: f.rol === "documento" ? (s?.nombre ?? null) : null,
-          fechaExpedicion:
-            (f.rol === "documento"
-              ? s?.fecha_expedicion
-              : f.rol === "tenedor"
-                ? s?.fecha_expedicion_tenedor
-                : f.rol === "conductor"
-                  ? s?.fecha_expedicion_conductor
-                  : null) ?? null,
-        },
+        plan: planDeFila(f, f.estudio_solicitudes),
         // Si la petición original murió sin registrar su intento, cuenta como uno
         intentosPrevios: typeof previos === "number" ? previos : 1,
       });
