@@ -339,6 +339,11 @@ y conductor escritos se ignoran (no se guardan ni se envían) y el formulario lo
 con 3 intentos nuevos y audita `estudio.relanzar`. La bandeja ahora también lista los estudios con
 todas las consultas fallidas (estado `error`) para poder relanzarlos.
 
+**Reportes:** solo las placas (cabezote, remolque) usan `report_car`; las personas del combo usan
+`report` o `report_nit` (pedirlas por `report_car` responde 410). Regla en `rutaReporte`.
+"Ver en TusDatos" (`urlReporteTusDatos`) abre la misma ruta sobre `dash-board.tusdatos.co` con la
+sesión que el administrador tenga en TusDatos; "Ver reporte" sigue mostrando el reporte por el proxy.
+
 **Lanzamiento con reintentos (12-nov-2026, SOL-000005):** `/api/launch/car` puede tardar más de 30 s
 o responder **200 con `{ error }` y sin `jobid`**. El cliente exige el `jobid` (`lanzarJob`), el
 tiempo de espera al lanzar es 45 s y `intentarLanzar` deja la consulta en proceso sin `jobid` cuando

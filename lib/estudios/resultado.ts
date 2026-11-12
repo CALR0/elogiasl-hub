@@ -157,6 +157,22 @@ export function rutaReporte(
     : `/api/v2/${base}/${id}`;
 }
 
+/** Panel web de TusDatos, donde el administrador entra con su propia cuenta. */
+export const TUSDATOS_PANEL_URL = "https://dash-board.tusdatos.co";
+
+/**
+ * Dirección del reporte en el panel de TusDatos: la misma ruta del API, que el
+ * panel abre con la sesión del navegador. Verificado con los reportes de
+ * SOL-000006 (report_nit, report y report_car). Sin sesión, TusDatos pide entrar.
+ */
+export function urlReporteTusDatos(
+  rol: RolConsulta,
+  tipoDoc: string | null,
+  reportId: string,
+) {
+  return `${TUSDATOS_PANEL_URL}${rutaReporte(rol, tipoDoc, "html", reportId)}`;
+}
+
 export interface EntradaConsulta {
   tipoDocumento: TipoDocumento;
   documento: string | null;

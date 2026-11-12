@@ -16,6 +16,7 @@ import {
   normalizarNivel,
   planDeConsultas,
   rutaReporte,
+  urlReporteTusDatos,
 } from "../lib/estudios/resultado.ts";
 import {
   enmascarar,
@@ -234,6 +235,20 @@ assert.equal(
   rutaReporte("remolque", "CC", "html", "x"),
   "/api/v2/report_car/x",
 );
+// Enlaces al panel de TusDatos: los reales de SOL-000006
+assert.equal(
+  urlReporteTusDatos("propietario", "NIT", "6af5eace92353ba09379d7a5"),
+  "https://dash-board.tusdatos.co/api/v2/report_nit/6af5eace92353ba09379d7a5",
+);
+assert.equal(
+  urlReporteTusDatos("conductor", "CC", "6af5ead69cac036c3297ca65"),
+  "https://dash-board.tusdatos.co/api/v2/report/6af5ead69cac036c3297ca65",
+);
+assert.equal(
+  urlReporteTusDatos("remolque", "CC", "6af5eadd0cde1ad3d6b3471a"),
+  "https://dash-board.tusdatos.co/api/v2/report_car/6af5eadd0cde1ad3d6b3471a",
+);
+
 // Personas del combo: reporte de persona o de empresa, nunca report_car
 assert.equal(rutaReporte("conductor", "CC", "html", "x"), "/api/v2/report/x");
 assert.equal(

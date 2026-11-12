@@ -168,6 +168,18 @@ export function TarjetaConsulta({
                   Ver reporte
                 </Link>
               )}
+              {c.urlTusDatos && (
+                <a
+                  href={c.urlTusDatos}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abre el reporte en el panel de TusDatos. Requiere tener sesión iniciada allí."
+                  className={buttonClasses("secundario", "md")}
+                >
+                  <ExternalLink className="size-4" aria-hidden />
+                  Ver en TusDatos
+                </a>
+              )}
               {datos.length > 0 && (
                 <details className="ml-auto text-sm">
                   <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">

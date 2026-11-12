@@ -3,7 +3,7 @@ import { getUsuarioActual } from "@/lib/auth";
 import { MODO_DEMO } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 import { almacenEstudios, aResumen } from "./demo";
-import { PESO_NIVEL } from "./resultado.ts";
+import { PESO_NIVEL, urlReporteTusDatos } from "./resultado.ts";
 import type {
   ConsultaEstudio,
   Decision,
@@ -321,6 +321,9 @@ export async function obtenerEstudio(numero: number): Promise<Estudio | null> {
       datos: c.datos ?? {},
       mensajeError: c.mensaje_error,
       tieneReporte: Boolean(c.report_id),
+      urlTusDatos: c.report_id
+        ? urlReporteTusDatos(c.rol, c.tipo_doc, c.report_id)
+        : null,
       simulada: d.simulada,
     }))
     .sort((a, b) => ORDEN_ROL[a.rol] - ORDEN_ROL[b.rol]);
@@ -425,6 +428,9 @@ export async function obtenerConsultaParaReporte(
       datos: c.datos ?? {},
       mensajeError: c.mensaje_error,
       tieneReporte: Boolean(c.report_id),
+      urlTusDatos: c.report_id
+        ? urlReporteTusDatos(c.rol, c.tipo_doc, c.report_id)
+        : null,
       simulada: c.estudio_solicitudes.simulada,
     },
   };

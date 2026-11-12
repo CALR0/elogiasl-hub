@@ -93,6 +93,8 @@ export interface ConsultaEstudio {
   datos: Record<string, unknown>;
   mensajeError: string | null;
   tieneReporte: boolean;
+  /** Reporte en el panel de TusDatos (requiere sesión propia en TusDatos). */
+  urlTusDatos: string | null;
   simulada: boolean;
 }
 

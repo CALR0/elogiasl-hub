@@ -905,6 +905,7 @@ function crearDemo(
       datos: {},
       mensajeError: null,
       tieneReporte: false,
+      urlTusDatos: null,
       simulada: true,
     };
   });
