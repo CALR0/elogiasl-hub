@@ -164,13 +164,14 @@ export const consultaVehiculoSchema = z
     remolqueMismoPropietario: z.boolean(),
     tipoPropietarioRemolque: z.enum(["CC", "CE", "NIT", "TI"]),
     documentoPropietarioRemolque: z.string().trim(),
-    /** Si true, también se piden antecedentes del propietario (y del propietario
-     *  del remolque, si lleva) con /api/launch del tipo+documento. */
+    /** Si true, se piden antecedentes (/api/launch) de todas las personas:
+     *  propietario, propietario del remolque, tenedor y conductor. Si false,
+     *  solo se consultan las placas y lo diligenciado de personas se ignora. */
     incluirAntecedentes: z.boolean(),
     autorizacion,
   })
   .superRefine((d, ctx) => {
-    if (d.incluirTenedor) {
+    if (d.incluirAntecedentes && d.incluirTenedor) {
       validarPersona(
         {
           tipo: d.tipoTenedor,
@@ -181,7 +182,7 @@ export const consultaVehiculoSchema = z
         "tenedor",
       );
     }
-    if (d.incluirConductor) {
+    if (d.incluirAntecedentes && d.incluirConductor) {
       validarPersona(
         {
           tipo: d.tipoConductor,

@@ -16,6 +16,7 @@ import { simularConsulta } from "./simulador";
 import { enmascarar, trazar } from "./traza.ts";
 import {
   type ClienteTusDatos,
+  esReintentable,
   obtenerClienteTusDatos,
   type TusDatosDocType,
   type TusDatosOwnerDocType,
@@ -40,9 +41,12 @@ import type {
  *     las 2 horas: si nadie abre una pantalla en ese tiempo, la consulta queda
  *     con error (falta el webhook de TusDatos para no depender de esto).
  *
- * Si TusDatos falla, la consulta queda en error con el mensaje recibido: nunca
- * se llenan datos simulados en una consulta real. Sin credenciales todo el
- * estudio es simulado y queda marcado como tal.
+ * Lanzar puede fallar por un rato (tiempo agotado, "realice la consulta
+ * nuevamente"): la consulta queda en proceso SIN jobid y sincronizarPendientes()
+ * la vuelve a lanzar, hasta MAX_INTENTOS_LANZAR. Solo entonces, o ante un
+ * rechazo definitivo (4xx), queda en error con el mensaje recibido: nunca se
+ * llenan datos simulados en una consulta real. Sin credenciales todo el estudio
+ * es simulado y queda marcado como tal.
  */
 
 const VACIO: Omit<EntradaConsulta, "tipoDocumento"> = {
@@ -93,6 +97,10 @@ export function entradaDocumento(d: ConsultaDocumento): EntradaConsulta {
 export function entradaVehiculo(v: ConsultaVehiculo): EntradaConsulta {
   const incluir = v.incluirRemolque;
   const mismo = v.remolqueMismoPropietario;
+  // Sin la casilla de antecedentes no se consulta a ninguna persona: lo
+  // diligenciado en tenedor y conductor no se guarda ni se envía.
+  const tenedor = v.incluirAntecedentes && v.incluirTenedor;
+  const conductor = v.incluirAntecedentes && v.incluirConductor;
   return {
     ...VACIO,
     tipoDocumento: "PLACA",
@@ -104,16 +112,14 @@ export function entradaVehiculo(v: ConsultaVehiculo): EntradaConsulta {
       incluir && !mismo ? v.tipoPropietarioRemolque : null,
     documentoPropietarioRemolque:
       incluir && !mismo ? v.documentoPropietarioRemolque : null,
-    tipoDocTenedor: v.incluirTenedor ? v.tipoTenedor : null,
-    documentoTenedor: v.incluirTenedor ? v.documentoTenedor : null,
+    tipoDocTenedor: tenedor ? v.tipoTenedor : null,
+    documentoTenedor: tenedor ? v.documentoTenedor : null,
     fechaExpedicionTenedor:
-      v.incluirTenedor && v.fechaExpedicionTenedor
-        ? v.fechaExpedicionTenedor
-        : null,
-    tipoDocConductor: v.incluirConductor ? v.tipoConductor : null,
-    documentoConductor: v.incluirConductor ? v.documentoConductor : null,
+      tenedor && v.fechaExpedicionTenedor ? v.fechaExpedicionTenedor : null,
+    tipoDocConductor: conductor ? v.tipoConductor : null,
+    documentoConductor: conductor ? v.documentoConductor : null,
     fechaExpedicionConductor:
-      v.incluirConductor && v.fechaExpedicionConductor
+      conductor && v.fechaExpedicionConductor
         ? v.fechaExpedicionConductor
         : null,
     incluirAntecedentes: v.incluirAntecedentes,
@@ -261,6 +267,8 @@ export async function crearSolicitud(
         placa: p.placa,
         tipo_doc: p.tipoDoc,
         documento: p.documento,
+        // Reserva el lanzamiento: nadie más la lanza mientras esta petición vive
+        ultima_revision: new Date().toISOString(),
       })),
     )
     .select("id, rol");
@@ -302,30 +310,94 @@ export async function crearSolicitud(
         await finalizarConsulta(admin, id, solicitudId, p, simular(p), {});
         return { ...base, jobid: null, error: null };
       }
-      try {
-        const lanzada = await lanzar(cliente, p, referencia(numero, p.rol));
-        await admin
-          .from("estudio_consultas")
-          .update({ jobid: lanzada.jobid, datos: lanzada.datos })
-          .eq("id", id);
-        await evento(
-          admin,
-          solicitudId,
-          "info",
-          `${etiquetaConsulta(p)}: consulta lanzada en TusDatos (job ${lanzada.jobid}).`,
-        );
-        return { ...base, jobid: lanzada.jobid, error: null };
-      } catch (e) {
-        const mensaje =
-          e instanceof Error ? e.message : "No se pudo lanzar la consulta.";
-        await marcarError(admin, id, solicitudId, p, mensaje);
-        return { ...base, jobid: null, error: mensaje };
-      }
+      const r = await intentarLanzar(admin, cliente, {
+        id,
+        solicitudId,
+        numero,
+        plan: p,
+        intentosPrevios: 0,
+      });
+      return { ...base, jobid: r.jobid, error: r.error };
     }),
   );
 
   const { fallida } = await cerrarSolicitud(admin, solicitudId);
   return { numero, id: solicitudId, simulada, consultas, fallida };
+}
+
+/** Intentos de lanzar una consulta antes de darla por fallida. */
+const MAX_INTENTOS_LANZAR = 3;
+
+/**
+ * Lanza la consulta y guarda el jobid. Si el fallo es pasajero la deja en
+ * proceso sin jobid para que sincronizarPendientes() la relance; si es
+ * definitivo o se agotaron los intentos, queda en error.
+ */
+async function intentarLanzar(
+  admin: Admin,
+  cliente: ClienteTusDatos,
+  c: {
+    id: string;
+    solicitudId: string;
+    numero: number;
+    plan: PlanConsulta;
+    intentosPrevios: number;
+  },
+): Promise<{
+  jobid: string | null;
+  /** Mensaje del fallo definitivo. null si se lanzó o si se va a reintentar. */
+  error: string | null;
+}> {
+  const p = c.plan;
+  const intento = c.intentosPrevios + 1;
+  try {
+    const lanzada = await lanzar(cliente, p, referencia(c.numero, p.rol));
+    await admin
+      .from("estudio_consultas")
+      .update({
+        jobid: lanzada.jobid,
+        datos: lanzada.datos,
+        ultima_revision: new Date().toISOString(),
+      })
+      .eq("id", c.id);
+    await evento(
+      admin,
+      c.solicitudId,
+      "info",
+      `${etiquetaConsulta(p)}: consulta lanzada en TusDatos (job ${lanzada.jobid})${intento > 1 ? `, intento ${intento}` : ""}.`,
+    );
+    return { jobid: lanzada.jobid, error: null };
+  } catch (e) {
+    const mensaje =
+      e instanceof Error ? e.message : "No se pudo lanzar la consulta.";
+    if (esReintentable(e) && intento < MAX_INTENTOS_LANZAR) {
+      trazar("estudio.lanzamiento_reintento", {
+        consulta: c.id,
+        rol: p.rol,
+        placa: p.placa,
+        intento,
+        mensaje,
+      });
+      await admin
+        .from("estudio_consultas")
+        .update({
+          datos: { lanzamiento: { intentos: intento } },
+          ultima_revision: new Date().toISOString(),
+        })
+        .eq("id", c.id)
+        .eq("estado", "procesando");
+      await evento(
+        admin,
+        c.solicitudId,
+        "info",
+        `${etiquetaConsulta(p)}: TusDatos no la recibió (${mensaje}). Se reintenta automáticamente (intento ${intento} de ${MAX_INTENTOS_LANZAR}).`,
+      );
+      return { jobid: null, error: null };
+    }
+    await admin.from("estudio_consultas").update({ datos: {} }).eq("id", c.id);
+    await marcarError(admin, c.id, c.solicitudId, p, mensaje);
+    return { jobid: null, error: mensaje };
+  }
 }
 
 async function lanzar(
@@ -496,19 +568,30 @@ async function cerrarSolicitud(admin: Admin, solicitudId: string) {
 const MS_ENTRE_REVISIONES = 8_000;
 /** Por llamada, para no agotar el tiempo de la función. */
 const MAX_POR_LLAMADA = 10;
-/** Una consulta sin jobid tras este tiempo se interrumpió al lanzarse. */
-const MS_SIN_JOB = 5 * 60_000;
+/**
+ * Entre un intento de lanzar y el siguiente. Mayor que la vida de una función
+ * (60 s): así nunca hay dos lanzamientos de la misma consulta a la vez.
+ */
+const MS_ENTRE_LANZAMIENTOS = 65_000;
 
 interface FilaPendiente {
   id: string;
   solicitud_id: string;
   rol: RolConsulta;
   placa: string | null;
+  tipo_doc: string;
+  documento: string | null;
   jobid: string | null;
   datos: Record<string, unknown> | null;
   created_at: string;
   ultima_revision: string | null;
-  estudio_solicitudes: { numero: number } | null;
+  estudio_solicitudes: {
+    numero: number;
+    nombre: string | null;
+    fecha_expedicion: string | null;
+    fecha_expedicion_tenedor: string | null;
+    fecha_expedicion_conductor: string | null;
+  } | null;
 }
 
 /** Pregunta a TusDatos por las consultas en proceso. Devuelve cuántas cambiaron. */
@@ -523,7 +606,7 @@ export async function sincronizarPendientes(actor: {
   const { data, error } = await admin
     .from("estudio_consultas")
     .select(
-      "id, solicitud_id, rol, placa, jobid, datos, created_at, ultima_revision, estudio_solicitudes ( numero )",
+      "id, solicitud_id, rol, placa, tipo_doc, documento, jobid, datos, created_at, ultima_revision, estudio_solicitudes ( numero, nombre, fecha_expedicion, fecha_expedicion_tenedor, fecha_expedicion_conductor )",
     )
     .eq("estado", "procesando")
     .order("ultima_revision", { ascending: true, nullsFirst: true })
@@ -536,7 +619,8 @@ export async function sincronizarPendientes(actor: {
     .filter(
       (f) =>
         !f.ultima_revision ||
-        ahora - new Date(f.ultima_revision).getTime() >= MS_ENTRE_REVISIONES,
+        ahora - new Date(f.ultima_revision).getTime() >=
+          (f.jobid ? MS_ENTRE_REVISIONES : MS_ENTRE_LANZAMIENTOS),
     )
     .slice(0, MAX_POR_LLAMADA);
 
@@ -572,15 +656,51 @@ async function revisarConsulta(
 
   try {
     if (!f.jobid) {
-      if (Date.now() - new Date(f.created_at).getTime() < MS_SIN_JOB)
-        return false;
-      const mensaje = "La consulta se interrumpió antes de lanzarse.";
-      if (await marcarError(admin, f.id, f.solicitud_id, f, mensaje)) {
-        await auditar("error", { mensaje });
-        await cerrarSolicitud(admin, f.solicitud_id);
-        return true;
-      }
-      return false;
+      // No llegó a lanzarse (fallo pasajero o petición interrumpida): se
+      // relanza. La reserva es atómica: si dos pantallas sincronizan a la vez,
+      // solo una la toma y TusDatos recibe un único lanzamiento.
+      const reserva = admin
+        .from("estudio_consultas")
+        .update({ ultima_revision: new Date().toISOString() })
+        .eq("id", f.id)
+        .eq("estado", "procesando")
+        .is("jobid", null);
+      const { data: tomada } = await (
+        f.ultima_revision
+          ? reserva.eq("ultima_revision", f.ultima_revision)
+          : reserva.is("ultima_revision", null)
+      ).select("id");
+      if (!tomada?.length) return false;
+
+      const s = f.estudio_solicitudes;
+      const previos = (f.datos?.lanzamiento as { intentos?: number } | undefined)
+        ?.intentos;
+      const r = await intentarLanzar(admin, cliente, {
+        id: f.id,
+        solicitudId: f.solicitud_id,
+        numero,
+        plan: {
+          rol: f.rol,
+          placa: f.placa,
+          tipoDoc: f.tipo_doc,
+          documento: f.documento ?? "",
+          nombre: f.rol === "documento" ? (s?.nombre ?? null) : null,
+          fechaExpedicion:
+            (f.rol === "documento"
+              ? s?.fecha_expedicion
+              : f.rol === "tenedor"
+                ? s?.fecha_expedicion_tenedor
+                : f.rol === "conductor"
+                  ? s?.fecha_expedicion_conductor
+                  : null) ?? null,
+        },
+        // Si la petición original murió sin registrar su intento, cuenta como uno
+        intentosPrevios: typeof previos === "number" ? previos : 1,
+      });
+      if (!r.error) return false;
+      await auditar("error", { mensaje: r.error });
+      await cerrarSolicitud(admin, f.solicitud_id);
+      return true;
     }
 
     await admin

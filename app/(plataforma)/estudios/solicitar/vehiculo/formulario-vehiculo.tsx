@@ -8,6 +8,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  TriangleAlert,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -101,10 +102,11 @@ export function FormularioVehiculo() {
   const resumen = useMemo(() => {
     const lineas: string[] = [];
     lineas.push(`Propietario: ${datos.tipoPropietario} ${datos.documentoPropietario || "—"}`);
+    const sinConsulta = datos.incluirAntecedentes ? "" : " (no se consulta)";
     if (datos.incluirTenedor)
-      lineas.push(`Tenedor: ${datos.tipoTenedor} ${datos.documentoTenedor || "—"}`);
+      lineas.push(`Tenedor: ${datos.tipoTenedor} ${datos.documentoTenedor || "—"}${sinConsulta}`);
     if (datos.incluirConductor)
-      lineas.push(`Conductor: ${datos.tipoConductor} ${datos.documentoConductor || "—"}`);
+      lineas.push(`Conductor: ${datos.tipoConductor} ${datos.documentoConductor || "—"}${sinConsulta}`);
     if (datos.incluirRemolque) {
       if (datos.remolqueMismoPropietario)
         lineas.push(`Remolque: ${datos.placaRemolque || "—"} (mismo propietario)`);
@@ -142,6 +144,9 @@ export function FormularioVehiculo() {
 
   const pideDocRemolque =
     datos.incluirRemolque && !datos.remolqueMismoPropietario;
+  const personasSinConsultar =
+    !datos.incluirAntecedentes &&
+    (datos.incluirTenedor || datos.incluirConductor);
 
   return (
     <form
@@ -413,9 +418,9 @@ export function FormularioVehiculo() {
             Incluir consulta de antecedentes
           </span>
           <span className="text-muted-foreground block text-xs">
-            Se consultarán los antecedentes del propietario (y del propietario
-            del remolque, si lleva). Tenedor y conductor siempre incluyen
-            antecedentes.
+            Consulta los antecedentes de las personas diligenciadas:
+            propietario, propietario del remolque, tenedor y conductor. Sin
+            marcar, solo se consultan las placas.
           </span>
         </span>
         <input
@@ -425,6 +430,19 @@ export function FormularioVehiculo() {
           className="accent-primary size-5 shrink-0"
         />
       </label>
+
+      {personasSinConsultar && (
+        <p
+          role="status"
+          className="border-construccion/40 bg-construccion-bg text-construccion flex items-start gap-2 rounded-xl border p-3 text-sm"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>
+            Agregaste tenedor o conductor, pero no se consultarán: marca
+            &laquo;Incluir consulta de antecedentes&raquo; para incluirlos.
+          </span>
+        </p>
+      )}
 
       {resumen.length > 1 && (
         <aside className="bg-muted/30 rounded-xl border p-4">

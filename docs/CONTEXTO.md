@@ -327,9 +327,24 @@ multipágina). El botón muestra el progreso ("Cargando 2/3", "Generando 2/3", "
 DOM del navegador y se descartan al cerrar la página. La conversión a PDF ocurre client-side. Lo
 único que persiste en la BD es la auditoría (`estudio.reporte`: quién, cuándo, qué consulta).
 
+**Casilla "Incluir consulta de antecedentes" (consulta por placa):** gobierna a TODAS las personas.
+Marcada: placas + antecedentes de propietario, propietario del remolque (si es otro), tenedor y
+conductor diligenciados. Sin marcar: solo las placas (cabezote y remolque); tenedor y conductor
+escritos se ignoran (no se guardan ni se envían) y el formulario lo avisa. Regla en `planDeConsultas`
+(`lib/estudios/resultado.ts`) y `entradaVehiculo` (`lib/estudios/procesar.ts`).
+
+**Lanzamiento con reintentos (12-nov-2026, SOL-000005):** `/api/launch/car` puede tardar más de 30 s
+o responder **200 con `{ error }` y sin `jobid`**. El cliente exige el `jobid` (`lanzarJob`), el
+tiempo de espera al lanzar es 45 s y `intentarLanzar` deja la consulta en proceso sin `jobid` cuando
+el fallo es pasajero (`esReintentable`: red, tiempo agotado, 5xx, 429, 200 sin job).
+`sincronizarPendientes` la relanza cada ~65 s hasta `MAX_INTENTOS_LANZAR` (3; el contador va en
+`datos.lanzamiento.intentos`), reservándola con un update condicional sobre `ultima_revision` para
+que dos pantallas no la lancen dos veces. Un 4xx queda en error de inmediato. Si TusDatos alcanzó a
+crear el job antes de un tiempo agotado, el relanzamiento puede gastar un crédito adicional.
+
 **Trazabilidad para pruebas:**
 - Vercel → Logs, buscar `[estudios]`: una línea JSON por petición a TusDatos (`tusdatos.http`: ruta, status,
-  ms, envío y respuesta) y por paso (`estudio.creado`, `estudio.consulta_error`, `estudio.sin_detalle`,
+  ms, envío y respuesta) y por paso (`estudio.creado`, `estudio.lanzamiento_reintento`, `estudio.consulta_error`, `estudio.sin_detalle`,
   `estudio.revision_fallo`). `ref` = `SOL-000123/remolque`. Nunca lleva credenciales.
 - Por defecto va un resumen con el documento enmascarado. `TUSDATOS_LOG_COMPLETO=true` agrega los cuerpos
   completos, **con datos personales**: solo para una prueba puntual y luego volver a quitarla.

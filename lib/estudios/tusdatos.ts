@@ -32,6 +32,18 @@ export class TusDatosError extends Error {
   }
 }
 
+/**
+ * ¿Vale la pena volver a lanzar la consulta? Sí ante fallos de red, tiempo
+ * agotado, 5xx, 429 o un 200 sin jobid (TusDatos lo usa para "realice la
+ * consulta nuevamente"). Un 4xx es definitivo: datos inválidos o sin créditos.
+ */
+export function esReintentable(e: unknown) {
+  if (!(e instanceof TusDatosError)) return true;
+  return (
+    e.status < 400 || e.status >= 500 || e.status === 408 || e.status === 429
+  );
+}
+
 export interface LanzamientoIndividual {
   typedoc: TusDatosDocType;
   doc?: string;
@@ -67,6 +79,8 @@ export interface TusDatosConfig {
   clave: string;
   baseUrl?: string;
   timeoutMs?: number;
+  /** Lanzar una placa consulta el RUNT en línea: tarda bastante más. */
+  timeoutLanzarMs?: number;
 }
 
 /** Base oficial del API de TusDatos (ver docs.tusdatos.co). */
@@ -86,13 +100,18 @@ export function clienteTusDatos({
   clave,
   baseUrl = TUSDATOS_BASE_URL_DEFAULT,
   timeoutMs = 30_000,
+  timeoutLanzarMs = 45_000,
 }: TusDatosConfig) {
   const auth = "Basic " + Buffer.from(`${usuario}:${clave}`).toString("base64");
 
   /** Una petición con su línea de log. `ref` la relaciona con la consulta. */
   async function llamar(
     ruta: string,
-    { cuerpo, ref }: { cuerpo?: Record<string, unknown>; ref?: string } = {},
+    {
+      cuerpo,
+      ref,
+      timeout = timeoutMs,
+    }: { cuerpo?: Record<string, unknown>; ref?: string; timeout?: number } = {},
   ) {
     const inicio = Date.now();
     const metodo = cuerpo ? "POST" : "GET";
@@ -100,7 +119,7 @@ export function clienteTusDatos({
       const res = await fetch(`${baseUrl}${ruta}`, {
         method: metodo,
         cache: "no-store",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(timeout),
         headers: {
           Accept: "application/json",
           ...(cuerpo ? { "Content-Type": "application/json" } : {}),
@@ -133,8 +152,38 @@ export function clienteTusDatos({
         envio: trazaEnvio(cuerpo),
         error: e instanceof Error ? e.message : String(e),
       });
+      if (e instanceof Error && e.name === "TimeoutError")
+        throw new Error(
+          `TusDatos no respondió en ${Math.round(timeout / 1000)} segundos.`,
+        );
       throw e;
     }
+  }
+
+  /**
+   * Lanza una consulta y EXIGE el jobid: TusDatos a veces responde 200 con
+   * { error: "..." } y sin job, y eso no es una consulta lanzada.
+   */
+  async function lanzarJob<T extends { jobid: string }>(
+    ruta: string,
+    cuerpo: Record<string, unknown>,
+    ref?: string,
+  ): Promise<T> {
+    const r = await llamar(ruta, { cuerpo, ref, timeout: timeoutLanzarMs });
+    if (!r.ok)
+      throw new TusDatosError(
+        `TusDatos respondió ${r.status}: ${detalleError(r.body, r.statusText)}`,
+        r.status,
+        r.body,
+      );
+    const jobid = (r.body as { jobid?: unknown } | null)?.jobid;
+    if (typeof jobid !== "string" || !jobid)
+      throw new TusDatosError(
+        detalleError(r.body, "TusDatos no devolvió el número de la consulta."),
+        r.status,
+        r.body,
+      );
+    return r.body as T;
   }
 
   async function pedir<T>(
@@ -157,14 +206,14 @@ export function clienteTusDatos({
       input: LanzamientoIndividual,
       ref?: string,
     ): Promise<{ jobid: string; validado?: boolean }> {
-      return pedir("/api/launch", { cuerpo: { ...input }, ref });
+      return lanzarJob("/api/launch", { ...input }, ref);
     },
     /** Lanza la consulta de una placa (cabezote o remolque) con su propietario. */
     lanzarVehiculo(
       input: LanzamientoVehiculo,
       ref?: string,
     ): Promise<LanzamientoVehiculoOut> {
-      return pedir("/api/launch/car", { cuerpo: { ...input }, ref });
+      return lanzarJob("/api/launch/car", { ...input }, ref);
     },
     /** Estado de un job. Un fallo de red o un 401 lanzan error: se reintenta luego. */
     async estado(jobid: string, ref?: string): Promise<EstadoJob> {

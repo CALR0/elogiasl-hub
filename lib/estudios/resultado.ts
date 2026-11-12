@@ -232,18 +232,17 @@ export function planDeConsultas(e: EntradaConsulta): PlanConsulta[] {
   if (e.placaRemolque) {
     consultas.push(placa("remolque", e.placaRemolque, tipoPropRem, docPropRem));
   }
-  // Antecedentes de los propietarios: solo si el usuario lo marcó
-  if (e.incluirAntecedentes) {
-    consultas.push(
-      persona("propietario", tipoPropCabezote, docPropCabezote, null),
-    );
-    if (e.placaRemolque && e.documentoPropietarioRemolque) {
-      consultas.push(
-        persona("prop_remolque", tipoPropRem, docPropRem, null),
-      );
-    }
+  // Sin la casilla de antecedentes solo se consultan las placas: ninguna
+  // persona (propietarios, tenedor, conductor), aunque se haya diligenciado.
+  if (!e.incluirAntecedentes) return consultas;
+
+  consultas.push(
+    persona("propietario", tipoPropCabezote, docPropCabezote, null),
+  );
+  // Mismo propietario del cabezote: ya quedó consultado arriba
+  if (e.placaRemolque && e.documentoPropietarioRemolque) {
+    consultas.push(persona("prop_remolque", tipoPropRem, docPropRem, null));
   }
-  // Tenedor y conductor: siempre consultan antecedentes cuando se agregan
   if (e.tipoDocTenedor && e.documentoTenedor) {
     consultas.push(
       persona(

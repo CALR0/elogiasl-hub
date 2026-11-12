@@ -22,7 +22,11 @@ import {
   trazaEnvio,
   trazaRespuesta,
 } from "../lib/estudios/traza.ts";
-import { clienteTusDatos } from "../lib/estudios/tusdatos.ts";
+import {
+  clienteTusDatos,
+  esReintentable,
+  TusDatosError,
+} from "../lib/estudios/tusdatos.ts";
 
 // ─── Niveles: el ejemplo oficial trae "Alto" con mayúscula ───────────────────
 assert.equal(normalizarNivel("Alto"), "alto");
@@ -158,6 +162,65 @@ const otroDueno = planDeConsultas({
 assert.equal(otroDueno[1].documento, "900123");
 assert.equal(otroDueno[1].tipoDoc, "NIT");
 
+// Sin la casilla de antecedentes: solo placas, aunque haya personas escritas
+const comboSinAntecedentes = planDeConsultas({
+  ...vacio,
+  tipoDocumento: "PLACA",
+  documento: "111",
+  placa: "ABC123",
+  tipoDocPropietario: "CC",
+  placaRemolque: "S54321",
+  tipoDocPropietarioRemolque: "NIT",
+  documentoPropietarioRemolque: "900123",
+  tipoDocTenedor: "CC",
+  documentoTenedor: "222",
+  tipoDocConductor: "CC",
+  documentoConductor: "333",
+});
+assert.deepEqual(
+  comboSinAntecedentes.map((c) => c.rol),
+  ["cabezote", "remolque"],
+);
+
+// Con la casilla: placas + todas las personas diligenciadas
+const comboCompleto = planDeConsultas({
+  ...vacio,
+  tipoDocumento: "PLACA",
+  documento: "111",
+  placa: "ABC123",
+  tipoDocPropietario: "CC",
+  placaRemolque: "S54321",
+  tipoDocPropietarioRemolque: "NIT",
+  documentoPropietarioRemolque: "900123",
+  tipoDocTenedor: "CC",
+  documentoTenedor: "222",
+  tipoDocConductor: "CE",
+  documentoConductor: "333",
+  fechaExpedicionConductor: "2001-04-19",
+  incluirAntecedentes: true,
+});
+assert.deepEqual(
+  comboCompleto.map((c) => c.rol),
+  ["cabezote", "remolque", "propietario", "prop_remolque", "tenedor", "conductor"],
+);
+assert.equal(comboCompleto[3].documento, "900123");
+assert.equal(comboCompleto[5].fechaExpedicion, "2001-04-19");
+
+// Remolque del mismo dueño: el propietario se consulta una sola vez
+const comboMismoDueno = planDeConsultas({
+  ...vacio,
+  tipoDocumento: "PLACA",
+  documento: "111",
+  placa: "ABC123",
+  tipoDocPropietario: "CC",
+  placaRemolque: "R12345",
+  incluirAntecedentes: true,
+});
+assert.deepEqual(
+  comboMismoDueno.map((c) => c.rol),
+  ["cabezote", "remolque", "propietario"],
+);
+
 // ─── Rutas del reporte ───────────────────────────────────────────────────────
 assert.equal(rutaReporte("documento", "CC", "html", "x"), "/api/v2/report/x");
 assert.equal(
@@ -219,6 +282,14 @@ const servidor = createServer((req, res) => {
       const placa = (JSON.parse(texto) as { placa: string }).placa;
       if (placa === "R00000")
         return responder(422, { detail: "Placa no válida" });
+      // Caso real (SOL-000005): 200 con error y SIN jobid
+      if (placa === "R41538")
+        return responder(200, {
+          error:
+            "Se presentó una falla iniciando la consulta, realice la consulta nuevamente.",
+        });
+      // No responde a tiempo
+      if (placa === "LEN700") return;
       return responder(200, {
         jobid: `job-${placa}`,
         vehiculo: { marca: "KENWORTH" },
@@ -283,6 +354,34 @@ await assert.rejects(
   "un rechazo llega con el mensaje de TusDatos",
 );
 
+const rechazo = await cliente
+  .lanzarVehiculo({ placa: "R00000", tdoc: "CC", doc: 1 })
+  .catch((e: unknown) => e);
+assert.equal(esReintentable(rechazo), false, "un 422 es definitivo");
+
+const sinJob = await cliente
+  .lanzarVehiculo({ placa: "R41538", tdoc: "CC", doc: 1 })
+  .catch((e: unknown) => e);
+assert.ok(
+  sinJob instanceof TusDatosError,
+  "un 200 sin jobid NO es una consulta lanzada",
+);
+assert.match(sinJob.message, /realice la consulta nuevamente/);
+assert.equal(esReintentable(sinJob), true, "200 sin jobid: se relanza");
+
+const impaciente = clienteTusDatos({
+  usuario: "usuario",
+  clave: "clave",
+  baseUrl: `http://127.0.0.1:${port}`,
+  timeoutLanzarMs: 300,
+});
+const lento = await impaciente
+  .lanzarVehiculo({ placa: "LEN700", tdoc: "CC", doc: 1 })
+  .catch((e: unknown) => e);
+assert.ok(lento instanceof Error);
+assert.match(lento.message, /TusDatos no respondió/);
+assert.equal(esReintentable(lento), true, "tiempo agotado: se relanza");
+
 assert.equal((await cliente.estado("en-proceso")).fase, "procesando");
 const listo = await cliente.estado("listo");
 assert.equal(listo.fase, "finalizado");
@@ -299,5 +398,6 @@ await assert.rejects(
   "credenciales malas: no se marca la consulta como fallida, se reintenta",
 );
 
+servidor.closeAllConnections();
 await new Promise((ok) => servidor.close(ok));
 console.log("\nTodo en orden.");
