@@ -132,7 +132,12 @@ export function interpretarResultado(
   };
 }
 
-/** Ruta del reporte de TusDatos según lo consultado. */
+/**
+ * Ruta del reporte de TusDatos según lo consultado. Solo las placas (cabezote
+ * y remolque) usan report_car; las personas del combo (propietario, tenedor,
+ * conductor) usan report o report_nit, igual que una consulta por documento.
+ * Pedir una persona por report_car responde 410.
+ */
 export function rutaReporte(
   rol: RolConsulta,
   tipoDoc: string | null,
@@ -141,11 +146,11 @@ export function rutaReporte(
 ) {
   const id = encodeURIComponent(reportId);
   const base =
-    rol === "documento"
-      ? tipoDoc === "NIT"
+    rol === "cabezote" || rol === "remolque"
+      ? "report_car"
+      : tipoDoc === "NIT"
         ? "report_nit"
-        : "report"
-      : "report_car";
+        : "report";
   // async=true: si el PDF no está listo responde 202 en vez de dejar esperando
   return formato === "pdf"
     ? `/api/v2/${base}_pdf/${id}?async=true`

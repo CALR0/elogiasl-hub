@@ -234,6 +234,17 @@ assert.equal(
   rutaReporte("remolque", "CC", "html", "x"),
   "/api/v2/report_car/x",
 );
+// Personas del combo: reporte de persona o de empresa, nunca report_car
+assert.equal(rutaReporte("conductor", "CC", "html", "x"), "/api/v2/report/x");
+assert.equal(
+  rutaReporte("prop_remolque", "CC", "pdf", "x"),
+  "/api/v2/report_pdf/x?async=true",
+);
+assert.equal(
+  rutaReporte("propietario", "NIT", "html", "x"),
+  "/api/v2/report_nit/x",
+);
+assert.equal(rutaReporte("tenedor", "CE", "html", "x"), "/api/v2/report/x");
 assert.equal(
   rutaReporte("cabezote", "CC", "pdf", "x"),
   "/api/v2/report_car_pdf/x?async=true",
